@@ -10,7 +10,7 @@ const WorkflowBuilder = () => {
     { id: 5, type: 'action', label: 'Update Database', x: 380, y: 420, icon: 'database', config: { table: 'users', operation: 'update' } },
     { id: 6, type: 'action', label: 'Send Notification', x: 250, y: 550, icon: 'bell', config: { channel: 'slack', message: 'Process completed' } },
   ]);
-  
+  // workfow
   const [connections, setConnections] = useState([
     { from: 1, to: 2 },
     { from: 2, to: 3 },
