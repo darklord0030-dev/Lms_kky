@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@keyframes progress {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.animate-progress {
+  animation: progress 1.5s linear forwards; /* 1.5s matches fake API delay */
+}
+html, body {
+  background-color: white;
+}
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background-color: white !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.25s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.25s ease-out;
+}
+.fade-in {
+  animation: fadeIn .25s ease-out;
+}
+
+@keyframes fadeIn {
+  from {opacity: 0; }
+  to {opacity: 1; }
+}
+
+.animate-pop {
+  animation: pop .25s ease-out;
+}
+
+@keyframes pop {
+  from {transform: scale(.89); opacity: 0;}
+  to {transform: scale(1); opacity: 1;}
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
