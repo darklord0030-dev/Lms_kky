@@ -14,23 +14,24 @@ import {
   HelpCircle,
   Group,
   HomeIcon,
-  BookCheck,
-  NotebookPen,
 } from "lucide-react";
-import { Dashboard } from "../../Pages/DashBoard";
-import { Help } from "./Help";
-import { only } from "node:test";
 
 type SidebarProps = {
   collapsed: boolean;
   setCollapsed: (val: boolean) => void;
+  userType: string; // backend sends uppercase, so allow string
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed, userType }) => {
   const location = useLocation();
 
-  const menuItems = [
+  // Normalize backend uppercase into lowercase for comparison
+  const normalizedType = userType?.toLowerCase();
 
+  // -----------------------------
+  // ROLE-BASED MENU CONFIG
+  // -----------------------------
+  const adminMenu = [
     { id: "dashboard", label: "Dashboard", icon: Home, path: "/dashboard" },
     { id: "users", label: "Users", icon: Users, path: "/users" },
     { id: "courses", label: "Courses", icon: BookOpen, path: "/courses" },
@@ -42,26 +43,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     { id: "notification", label: "Notification", icon: Bell, path: "/notification" },
     { id: "workflow", label: "Workflow", icon: Workflow, path: "/workflow" },
     { id: "settings", label: "Settings", icon: Settings, path: "/settings" },
-    { id: "help", label: "Help", icon: HelpCircle, path: "/admin" },
-    { id: "Home", label: "Home", icon: HomeIcon, path: "/home" },
-    { id: "My Courses", label: "My Courses", icon: BookOpen, path: "/help" },
-    { id: "Tests", label: "Tests", icon: BookCheck, path: "/testpage" },
-        { id: "Assignments", label: "Assignments", icon: NotebookPen, path: "/assignments" },
-        { id: "Certificates", label: "Certificates", icon: Award, path: "/certificates" },
-         { id: "new", label: "new", icon: HelpCircle, path: "/new" }, 
-     {id:"teacher", label: "tecaher", icon:BookOpen, path: "/teacher" },   
-
+    { id: "help", label: "Help", icon: HelpCircle, path: "/help" },
   ];
+
+  const learnerMenu = [
+    { id: "home", label: "Home", icon: HomeIcon, path: "/home" },
+    { id: "myCourses", label: "My Courses", icon: BookOpen, path: "/card" },
+    { id: "certificates", label: "Certificates", icon: Award, path: "/certificates" },
+    { id: "messages", label: "Messages", icon: MessageSquare, path: "/messages" },
+    { id: "notification", label: "Notification", icon: Bell, path: "/notification" },
+    { id: "help", label: "Help", icon: HelpCircle, path: "/help" },
+  ];
+
+  // Select menu based on normalized type
+  const menuItems = normalizedType === "admin" ? adminMenu : learnerMenu;
 
   return (
     <div
       className={`fixed left-0 top-[64px] dark:bg-gray-950 shadow-lg flex flex-col transition-all duration-300 z-40 ${
         collapsed ? "w-15" : "w-64"
       }`}
-      style={{ height: "calc(100vh - 64px)" }} // Sidebar stops at header
+      style={{ height: "calc(100vh - 64px)" }}
     >
       {/* Menu */}
-      <nav className="flex-1 pt-4  overflow-y-auto">
+      <nav className="flex-1 pt-4 overflow-y-auto">
         <ul className="space-y-1 px-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -71,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
               <li key={item.id}>
                 <Link
                   to={item.path}
-                  className={`flex items-center px-2 py-2  transition-all duration-200 ${
+                  className={`flex items-center px-2 py-2 transition-all duration-200 ${
                     isActive
                       ? "bg-gray-200 dark:bg-gray-800 text-blue-700 dark:text-blue-400 shadow-sm"
                       : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -87,10 +92,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
                   {!collapsed && (
                     <span className="ml-2 font-medium">{item.label}</span>
                   )}
-                </Link> 
+                </Link>
               </li>
             );
-            })}
+          })}
         </ul>
       </nav>
 
@@ -103,5 +108,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
     </div>
   );
 };
-
-

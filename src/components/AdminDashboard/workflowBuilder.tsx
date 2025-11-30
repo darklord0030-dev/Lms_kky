@@ -86,41 +86,34 @@ const iconMap: Record<string, React.FC<any>> = {
   globe: Globe,
   filter: Filter,
   zap: Zap,
-  // New icons for additional nodes
-  upload: Upload,               // File Upload trigger:contentReference[oaicite:19]{index=19}
-  paperclip: Paperclip,         // Form Submit trigger:contentReference[oaicite:20]{index=20}
-  "file-plus": FilePlus,        // Record Created trigger:contentReference[oaicite:21]{index=21}
-  "file-chart-pie": FileChartPie, // Generate Report action:contentReference[oaicite:22]{index=22}
-  "user-plus": UserPlus,        // Enroll & Send action:contentReference[oaicite:23]{index=23}
-  plus: Plus,                   // +4 logic node:contentReference[oaicite:24]{index=24}
+  upload: Upload,
+  paperclip: Paperclip,
+  "file-plus": FilePlus,
+  "file-chart-pie": FileChartPie,
+  "user-plus": UserPlus,
+  plus: Plus,
 };
 const getIcon = (name: string) => iconMap[name] || Code;
 const getNodeColor = (type: string) =>
   ({ trigger: "bg-green-500", action: "bg-blue-500", condition: "bg-yellow-500", database: "bg-purple-500" } as any)[type] || "bg-gray-500";
 
 const NODE_TYPES = [
-  // Existing triggers
   { type: "trigger", label: "Webhook", icon: "webhook", color: "bg-green-500", description: "Start workflow from HTTP request" },
   { type: "trigger", label: "Schedule", icon: "calendar", color: "bg-green-600", description: "Run on a CRON schedule" },
-  // New trigger nodes
   { type: "trigger", label: "File Upload", icon: "upload", color: "bg-green-600", description: "Start when a file is uploaded" },
   { type: "trigger", label: "Form Submit", icon: "paperclip", color: "bg-green-600", description: "Start on form submission" },
   { type: "trigger", label: "Record Created", icon: "file-plus", color: "bg-green-600", description: "Start when a new record is created" },
 
-  // Existing actions
   { type: "action", label: "HTTP Request", icon: "globe", color: "bg-blue-500", description: "Make external API calls" },
   { type: "action", label: "Transform Data", icon: "code", color: "bg-blue-600", description: "Parse or modify data (JavaScript)" },
   { type: "action", label: "Send Email", icon: "mail", color: "bg-indigo-500", description: "Send email notifications" },
   { type: "action", label: "Delay", icon: "zap", color: "bg-orange-500", description: "Pause workflow for some time" },
   { type: "action", label: "Send Notification", icon: "bell", color: "bg-blue-700", description: "Send a Slack or chat notification" },
   { type: "action", label: "Filter", icon: "filter", color: "bg-yellow-600", description: "Filter data based on a condition" },
-  // New action nodes
   { type: "action", label: "Generate Report", icon: "file-chart-pie", color: "bg-blue-600", description: "Generate a report" },
   { type: "action", label: "Enroll & Send", icon: "user-plus", color: "bg-blue-600", description: "Enroll a user and send notification" },
-  // Existing condition and database
   { type: "condition", label: "If/Else", icon: "branch", color: "bg-yellow-500", description: "Branch workflow on a condition" },
   { type: "database", label: "Database", icon: "database", color: "bg-purple-500", description: "Query or update a database table" },
-  // New logic node as an action for +4
   { type: "action", label: "+4", icon: "plus", color: "bg-blue-600", description: "Add four to a value" },
 ];
 
@@ -184,7 +177,6 @@ function WorkflowBuilder() {
     { id: 4, type: "action", label: "Send Email", x: 120, y: 420, icon: "mail", config: { to: "user@example.com", subject: "Status Update", body: "Hello!" } },
     { id: 5, type: "action", label: "Update Database", x: 380, y: 420, icon: "database", config: { table: "users", operation: "update", query: "WHERE id = {{id}}" } },
     { id: 6, type: "action", label: "Send Notification", x: 250, y: 550, icon: "bell", config: { channel: "slack", message: "Process completed" } },
-    // Example new default nodes (could be empty or placeholders)
     { id: 7, type: "trigger", label: "File Uploaded", x: 400, y: 50, icon: "upload", config: { fileUrl: "" } },
     { id: 8, type: "action", label: "User Enrolled", x: 400, y: 170, icon: "user-plus", config: { userId: "" } },
     { id: 9, type: "action", label: "Add 4", x: 400, y: 290, icon: "plus", config: { value: 4 } },
@@ -200,7 +192,6 @@ function WorkflowBuilder() {
     { from: 6, to: 7 },
     { from: 7, to: 8 },
     { from: 8, to: 9 },
-    
   ]);
   // Selection and dragging state
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
@@ -457,21 +448,17 @@ function WorkflowBuilder() {
       pushLog(`Simulating: ${node.label}`);
       let out: any = data;
 
-     if (node.icon === "upload") {
-        // Example: generate sample file upload data
+      if (node.icon === "upload") {
         out = { payload: { id: Date.now(), name: "file.txt", size: 1234 } };
         pushLog("File upload trigger fired", { sample: out });
       } else if (node.icon === "paperclip") {
         pushLog("Form submitted trigger");
       } else if (node.icon === "file-plus") {
         pushLog("Record created trigger");
-      }
-
-      if (node.icon === "webhook") {
+      } else if (node.icon === "webhook") {
         out = { payload: { id: Date.now(), status: "active", source: "webhook" } };
         pushLog("Webhook generated sample", { sample: out });
-      }      // Existing node simulations...
-      else if (node.icon === "globe") {
+      } else if (node.icon === "globe") {
         const url = node.config.url || "";
         const method = node.config.method || "GET";
         pushLog(`HTTP ${method} to ${url}`);
@@ -495,7 +482,6 @@ function WorkflowBuilder() {
       } else if (node.icon === "user-plus") {
         pushLog("Enroll & Send action executed");
       } else if (node.icon === "plus") {
-        // Example logic: add 4 to numeric payload if present
         const original = data.payload?.value || 0;
         const added = original + (node.config.value || 4);
         out = { payload: { ...data.payload, value: added } };
@@ -537,7 +523,6 @@ function WorkflowBuilder() {
     setRunning(false);
   };
 
-
   // Run workflow based on selected mode
   const runWorkflow = () => {
     if (running) {
@@ -552,7 +537,7 @@ function WorkflowBuilder() {
 
   // Save workflow to Redux store
   const saveWorkflow = (name: string = "My Workflow") => {
-    const wf: WorkflowItem = { id: Date.now(), name, nodes, connections, createdAt: new Date().toISOString() };
+    const wf: Workflow = { id: Date.now(), name, nodes, connections, createdAt: new Date().toISOString() };
     dispatch(addWorkflow(wf));
     pushLog(`Saved workflow "${name}"`);
     window.history.replaceState({}, "", "/");
@@ -777,7 +762,8 @@ function WorkflowBuilder() {
   }, [nodes, selectedNode, connections]);
 
   // Render UI
-      <div className="flex h-full">
+  return (
+    <div className="flex h-full">
       {/* Left pane: Toolbox and controls */}
       <div className="w-80 bg-white border-r overflow-auto">
         <div className="p-4">
@@ -863,8 +849,8 @@ function WorkflowBuilder() {
             Click the bottom green dot of a node to start a connection, then click the top blue dot of another node to connect.
           </div>
           <div className="mt-6 text-xs text-gray-600 space-y-1">
-            <div>Nodes: {nodes.length}</div>
-            <div>Connections: {connections.length}</div>
+            <div>Nodes: {totalNodes}</div>
+            <div>Connections: {totalConnections}</div>
             <div>Logs: {logs.length}</div>
           </div>
         </div>
@@ -994,7 +980,8 @@ function WorkflowBuilder() {
         )}
       </div>
     </div>
-  
+
+  );
 }
 
 // WorkflowsList component
@@ -1060,4 +1047,4 @@ function WorkflowsList() {
 }
 
 export { WorkflowStudio };
-export default WorkflowStudioWrapper
+export default WorkflowStudioWrapper;

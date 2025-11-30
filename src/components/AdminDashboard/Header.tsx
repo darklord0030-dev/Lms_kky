@@ -40,36 +40,35 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
   const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Load user info from backend using userId
+  // Load user info + normalize uppercase to lowercase
   useEffect(() => {
     const loadUser = async () => {
       try {
         const storedToken = localStorage.getItem("token");
         if (!storedToken) return;
-        
+
         const parsed = JSON.parse(storedToken);
         const userId = parsed?.data?.userId || parsed?.userId;
-        if (!userId) {
-          console.warn("No userId found in token");
-          return;
-        }
 
-        // ✅ Fetch user data by ID from backend
+        if (!userId) return;
+
         const response = await axios.get(`http://localhost:3000/api/user/${userId}`);
         const userData = response.data;
 
-        // Normalize key casing
+        // Normalize usertype to lowercase
+        const normalizedType =
+          (userData.usertype || userData.userType || "User").toLowerCase();
+
         const normalizedUser = {
           firstname: userData.firstname || userData.firstName || "",
           lastname: userData.lastname || userData.lastName || "",
           email: userData.email || "",
-          usertype: userData.usertype || userData.role || "User",
+          usertype: normalizedType, // store lowercase
         };
 
         setUser(normalizedUser);
 
       } catch (error) {
-        console.error("Error loading user:", error);
         toast.error("Failed to load user info");
       }
     };
@@ -77,12 +76,10 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
     loadUser();
   }, []);
 
-  // ✅ Proper full name display
   const fullname = user
     ? [user.firstname, user.lastname].filter(Boolean).join(" ").trim() || "Guest User"
     : "Guest User";
 
-  // ✅ Handle search
   const handleSearch = async (value: string) => {
     setQuery(value);
     if (!value.trim()) {
@@ -94,15 +91,13 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
       setLoading(true);
       const res = await axios.get(`http://localhost:3000/api/search?query=${value}`);
       setResults(res.data || []);
-    } catch (error) {
-      console.error("Search error:", error);
+    } catch {
       toast.error("Search failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Logout
   const handleLogout = async () => {
     try {
       setLoading(true);
@@ -111,11 +106,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
       await axios.post(
         "http://localhost:3000/api/auth/logout",
         {},
-        {
-          headers: {
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-        }
+        { headers: { Authorization: token ? `Bearer ${token}` : "" } }
       );
 
       localStorage.removeItem("user");
@@ -123,34 +114,28 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
 
       toast.success("Logged out successfully");
       navigate("/login");
-    } catch (error) {
-      console.error("Logout error:", error);
+    } catch {
       toast.error("Logout failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Debounced search
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
-      if (query.trim()) {
-        handleSearch(query);
-      } else {
-        setResults([]);
-      }
+      if (query.trim()) handleSearch(query);
+      else setResults([]);
     }, 400);
+
     return () => clearTimeout(delayDebounce);
   }, [query]);
 
-  // ✅ Scroll detection
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ✅ Close menu on outside click / Esc
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -212,8 +197,10 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
         </div>
       </div>
 
-      {/* Right Section */}
+      {/* Right Section - SAME FOR ALL USERS */}
       <div className="flex items-center space-x-4">
+
+        {/* Calendar */}
         <button
           onClick={() => navigate("/calendar")}
           className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
@@ -221,6 +208,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
           <Calendar className="w-5 h-5" />
         </button>
 
+        {/* Messages */}
         <button
           onClick={() => navigate("/messages")}
           className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
@@ -229,6 +217,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
         </button>
 
+        {/* Notifications */}
         <button
           onClick={() => navigate("/notification")}
           className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
@@ -237,9 +226,10 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
         </button>
 
+        {/* Divider */}
         <div className="h-6 w-px bg-gray-300 dark:bg-gray-700" />
 
-        {/* User Menu */}
+        {/* User Dropdown */}
         <div className="relative" ref={menuRef}>
           <div
             className="flex items-center space-x-3 cursor-pointer"
@@ -254,7 +244,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
                 {fullname}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {user?.usertype || "Visitor"}
+                {user?.usertype}
               </p>
             </div>
 
@@ -273,23 +263,26 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
                       {fullname}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {user?.email || "no-email@example.com"}
+                      {user?.email}
                     </p>
                     <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mt-0.5">
-                      {user?.usertype || "Visitor"}
+                      {user?.usertype}
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="py-2">
-               <button
-  onClick={() => navigate("/adduser", { state: { user } })}
-  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
->
-  <User className="w-4 h-4 mr-2" /> Profile
-</button>
 
+                {/* Profile */}
+                <button
+                  onClick={() => navigate("/adduser", { state: { user } })}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <User className="w-4 h-4 mr-2" /> Profile
+                </button>
+
+                {/* Settings */}
                 <button
                   onClick={() => navigate("/settings")}
                   className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
@@ -300,6 +293,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
 
               <div className="border-t dark:border-gray-800" />
 
+              {/* Logout */}
               <button
                 onClick={handleLogout}
                 className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-800"

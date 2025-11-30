@@ -20,6 +20,7 @@ import {
   Clock,
   Search,
   ChevronLeft,
+  UserPlus,
 } from "lucide-react";
 
 /**
@@ -31,6 +32,7 @@ import {
  * - Video upload (object URL preview)
  * - Publish toggle (list + editor)
  * - Delete (course/chapter/lesson) with confirm
+ * - Enrollment drawer with API-backed learner search, avatars, multi-select
  *
  * Paste into your project and import where needed.
  */
@@ -65,6 +67,13 @@ type Course = {
   chapters: Chapter[];
 };
 
+type Learner = {
+  id: string;
+  name?: string;
+  email: string;
+  avatar?: string | null;
+};
+
 // ------------------ LocalStorage helpers ------------------
 const LS_PREFIX = "lms_local_v2";
 function lsKey(key: string) {
@@ -86,6 +95,16 @@ function readFromLS<T>(key: string, fallback: T): T {
     console.warn("Failed to read from localStorage", e);
     return fallback;
   }
+}
+
+// ------------------ Enrollment Storage ------------------
+// Store enrollments like: { learnerId/email: string[] } -> array of courseIds
+function getEnrollments(): Record<string, string[]> {
+  return readFromLS("enrollments", {} as Record<string, string[]>);
+}
+
+function saveEnrollments(data: Record<string, string[]>) {
+  saveToLS("enrollments", data);
 }
 
 // ------------------ Student Preview ------------------
@@ -376,6 +395,20 @@ export default function AdminCourseCreator() {
   const thumbInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Enrollment Drawer State
+  const [showEnrollDrawer, setShowEnrollDrawer] = useState(false);
+  const [enrollTargetCourse, setEnrollTargetCourse] = useState<Course | null>(null);
+
+  // Search + learners state (API)
+  const [learners, setLearners] = useState<Learner[]>([]);
+  const [learnersLoading, setLearnersLoading] = useState(false);
+  const [learnersError, setLearnersError] = useState<string | null>(null);
+
+  // input/search + selection
+  const [enrollInput, setEnrollInput] = useState(""); // typed text (email or name)
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [selectedLearners, setSelectedLearners] = useState<Learner[]>([]);
+
   // persist courses
   useEffect(() => {
     saveToLS("courses", courses);
@@ -575,12 +608,141 @@ export default function AdminCourseCreator() {
     input.click();
   };
 
+  // ---------- ENROLLMENT (drawer) ----------
+  const openEnrollDrawer = (course: Course) => {
+    setEnrollTargetCourse(course);
+    setEnrollInput("");
+    setSelectedLearners([]);
+    setSuggestionsOpen(false);
+    setShowEnrollDrawer(true);
+
+    // fetch learners when drawer opens
+    fetchLearners();
+  };
+
+  // Fetch learners from API endpoint: GET /api/learners
+  const fetchLearners = async () => {
+    setLearnersLoading(true);
+    setLearnersError(null);
+    try {
+      const res = await fetch("/api/learners");
+      if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+      const data: Learner[] = await res.json();
+      setLearners(data || []);
+    } catch (err: any) {
+      console.error("Failed to fetch learners", err);
+      setLearnersError("Failed to load learners");
+      setLearners([]);
+    } finally {
+      setLearnersLoading(false);
+    }
+  };
+
+  // Filter suggestions based on enrollInput
+  const suggestions = useMemo(() => {
+    const q = enrollInput.trim().toLowerCase();
+    if (!q) return learners.slice(0, 8);
+    return learners
+      .filter((l) => (l.name || "").toLowerCase().includes(q) || l.email.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [learners, enrollInput]);
+
+  // Add selected learner (by clicking suggestion)
+  const addLearnerToSelection = (learner: Learner) => {
+    if (selectedLearners.some((s) => s.id === learner.id || s.email === learner.email)) return;
+    setSelectedLearners((p) => [...p, learner]);
+    setEnrollInput("");
+    setSuggestionsOpen(false);
+  };
+
+  // Remove learner chip
+  const removeSelectedLearner = (idOrEmail: string) => {
+    setSelectedLearners((p) => p.filter((l) => l.id !== idOrEmail && l.email !== idOrEmail));
+  };
+
+  // Add typed email/name as ad-hoc learner (creates id based on timestamp + email)
+  const addAdHocLearner = () => {
+    const text = enrollInput.trim();
+    if (!text) return;
+    // if text looks like email, use that; otherwise use text as name with a generated email-like id
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
+    const generated: Learner = {
+      id: `adhoc-${Date.now()}`,
+      name: isEmail ? undefined : text,
+      email: isEmail ? text : `${text.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+      avatar: null,
+    };
+    addLearnerToSelection(generated);
+  };
+
+  // Multi-enroll selected learners into enrollTargetCourse
+  const submitEnrollment = () => {
+    if (!enrollTargetCourse) return;
+
+    const enrollments = getEnrollments();
+    const toEnroll = selectedLearners.length > 0 ? selectedLearners : [];
+
+    // if nothing selected but user typed an email, add it
+    if (toEnroll.length === 0 && enrollInput.trim()) {
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(enrollInput.trim());
+      const adhoc: Learner = {
+        id: `adhoc-${Date.now()}`,
+        name: isEmail ? undefined : enrollInput.trim(),
+        email: enrollInput.trim(),
+        avatar: null,
+      };
+      toEnroll.push(adhoc);
+    }
+
+    if (toEnroll.length === 0) {
+      notify("Please select or enter at least one learner", "error");
+      return;
+    }
+
+    toEnroll.forEach((learner) => {
+      const key = learner.id || learner.email;
+      if (!enrollments[key]) enrollments[key] = [];
+      if (!enrollments[key].includes(enrollTargetCourse.id)) {
+        enrollments[key].push(enrollTargetCourse.id);
+      }
+    });
+
+    saveEnrollments(enrollments);
+    notify(`Enrolled ${toEnroll.length} learner(s) to "${enrollTargetCourse.title}"`);
+    setShowEnrollDrawer(false);
+    setEnrollInput("");
+    setSelectedLearners([]);
+  };
+
+  // handle Enter key inside enroll input
+  const handleEnrollInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (suggestions.length > 0 && enrollInput.trim()) {
+        // if an exact match exists, add that
+        const exact = suggestions.find(
+          (s) => s.email.toLowerCase() === enrollInput.trim().toLowerCase() || (s.name || "").toLowerCase() === enrollInput.trim().toLowerCase()
+        );
+        if (exact) {
+          addLearnerToSelection(exact);
+          return;
+        }
+      }
+      // fallback: add ad-hoc
+      addAdHocLearner();
+    }
+    if (e.key === "ArrowDown") {
+      // open suggestions
+      setSuggestionsOpen(true);
+    }
+  };
+
   // ---------- RENDER ----------
 
   // LIST VIEW
   if (view === "list") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-slate-100">
+      <div className="min-h-screen bg-white text-slate-100">
         {notification && (
           <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${notification.type === "success" ? "bg-emerald-500" : "bg-red-500"} text-white font-semibold`}>
             {notification.message}
@@ -590,8 +752,8 @@ export default function AdminCourseCreator() {
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-4xl font-bold mb-2">Course Management</h1>
-              <p className="text-slate-300">Create, edit, and manage your courses</p>
+              <h1 className="text-3xl font-bold  text-black mb-2">Course Management</h1>
+              <p className="text-black">Create, edit, and manage your courses</p>
             </div>
             <div className="flex items-center gap-4">
               <button onClick={createNewCourse} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition">
@@ -607,7 +769,7 @@ export default function AdminCourseCreator() {
                   {course.thumbnail ? (
                     <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800">
+                    <div className="w-full h-full flex items-center justify-center">
                       <BookOpen size={48} className="text-slate-500" />
                     </div>
                   )}
@@ -623,8 +785,8 @@ export default function AdminCourseCreator() {
                           {course.published ? "Published" : "Unpublished"}
                         </span>
                       </h3>
-                      <p className="text-sm text-slate-400 mb-4 line-clamp-2">{course.description}</p>
-                      <div className="flex items-center gap-2 text-xs text-slate-400 mb-4">
+                      <p className="text-sm text-white mb-4 line-clamp-2">{course.description}</p>
+                      <div className="flex items-center gap-2 text-xs text-white mb-4">
                         <span>{course.chapters.length} chapters</span>
                         <span>•</span>
                         <span>{course.chapters.reduce((acc, ch) => acc + ch.lessons.length, 0)} lessons</span>
@@ -638,26 +800,34 @@ export default function AdminCourseCreator() {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      <button onClick={() => togglePublish(course.id)} className={`px-3 py-1 rounded ${course.published ? "bg-emerald-500 text-black" : "bg-yellow-400 text-black"}`}>
-                        {course.published ? "Unpublish" : "Publish"}
-                      </button>
-                      <div className="flex gap-2">
-                        <button onClick={() => editCourse(course)} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded transition flex items-center gap-2">
-                          <Edit2 size={16} /> Edit
+                      {/* <button onClick={() => togglePublish(course.id)} className={`px-3 py-1 rounded ${course.published ? "bg-emerald-500 text-black" : "bg-yellow-400 text-black"}`}>
+                        {course.published ? "Unpublish" : "Publish"} */}
+                      {/* </button> */}
+                      <div className="flex ">
+                        <button onClick={() => editCourse(course)} className="px-3 py-2  hover:bg-blue-700 rounded transition flex items-center gap-2">
+                          <Edit2 size={16} /> 
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-2 mt-4">
-                    <button onClick={() => { setEditingCourse(course); setView("preview"); }} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                  <div className="flex">
+                    <button onClick={() => { setEditingCourse(course); setView("preview"); }} className="px-2 py-2  hover:bg-slate-600 rounded-lg transition">
                       <Eye size={16} />
                     </button>
-                    <button onClick={() => duplicateCourse(course)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition">
+                    <button onClick={() => duplicateCourse(course)} className="px-2 py-2  hover:bg-slate-600 rounded-lg transition">
                       <Copy size={16} />
                     </button>
-                    <button onClick={() => deleteCourse(course.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition">
+                    <button onClick={() => deleteCourse(course.id)} className="px-2 py-2  hover:bg-red-700 rounded-lg transition">
                       <Trash2 size={16} />
+                    </button>
+
+                    {/* Enroll Button */}
+                    <button
+                      onClick={() => openEnrollDrawer(course)}
+                      className="px-2 py-2  hover:bg-emerald-700 rounded transition flex items-center gap-2"
+                    >
+                     <UserPlus size={16} />
                     </button>
                   </div>
                 </div>
@@ -667,14 +837,159 @@ export default function AdminCourseCreator() {
 
           {courses.length === 0 && (
             <div className="text-center py-20">
-              <BookOpen size={64} className="mx-auto text-slate-600 mb-4" />
-              <h3 className="text-2xl font-bold mb-2">No courses yet</h3>
-              <p className="text-slate-400 mb-6">Create your first course to get started</p>
+              <BookOpen size={64} className="mx-auto text-black mb-4" />
+              <h3 className="text-2xl text-black font-bold mb-2">No courses yet</h3>
+              <p className="text-black mb-6">Create your first course to get started</p>
               <button onClick={createNewCourse} className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition">
                 Create Course
               </button>
             </div>
           )}
+
+          {/* ENROLL DRAWER */}
+          <div
+            className={`fixed inset-0 z-50 transition ${showEnrollDrawer ? "visible" : "invisible"}`}
+          >
+            {/* Overlay */}
+            <div
+              className={`absolute inset-0 bg-black/50 transition-opacity ${showEnrollDrawer ? "opacity-100" : "opacity-0"}`}
+              onClick={() => setShowEnrollDrawer(false)}
+            />
+
+            {/* Drawer */}
+            <div
+              className={`absolute top-0 right-0 h-full w-96 bg-white text-black border-l border-gray-300 p-6 shadow-xl transform transition-transform ${showEnrollDrawer ? "translate-x-0" : "translate-x-full"}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold mb-1 text-gray-800">
+                    Enroll Learners
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    Course: <strong>{enrollTargetCourse?.title}</strong>
+                  </p>
+                </div>
+
+                <button onClick={() => setShowEnrollDrawer(false)} className="text-gray-500 hover:text-gray-700">
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-sm font-semibold mb-2 text-gray-700">Search learners (name or email)</label>
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={enrollInput}
+                    onChange={(e) => { setEnrollInput(e.target.value); setSuggestionsOpen(true); }}
+                    onKeyDown={handleEnrollInputKey}
+                    placeholder="Type name or email and press Enter or choose from suggestions"
+                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded text-black focus:outline-none focus:border-emerald-500"
+                  />
+
+                  {/* Suggestion box */}
+                  {suggestionsOpen && enrollInput.trim() !== "" && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-md max-h-60 overflow-auto z-40">
+                      {learnersLoading ? (
+                        <div className="p-3 text-sm text-gray-600">Loading learners...</div>
+                      ) : learnersError ? (
+                        <div className="p-3 text-sm text-red-600">Failed to load learners</div>
+                      ) : suggestions.length === 0 ? (
+                        <div className="p-3 text-sm text-gray-600">No matches — press Enter to add</div>
+                      ) : (
+                        suggestions.map((s) => (
+                          <button
+                            key={s.id || s.email}
+                            onClick={() => addLearnerToSelection(s)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3"
+                          >
+                            <img src={s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || s.email)}&background=ddd`} alt={s.name || s.email} className="w-8 h-8 rounded-full object-cover" />
+                            <div className="flex-1">
+                              <div className="text-sm font-semibold text-gray-800">{s.name || s.email}</div>
+                              <div className="text-xs text-gray-500">{s.email}</div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Or show default suggestions (when input empty) */}
+                {suggestionsOpen && enrollInput.trim() === "" && (
+                  <div className="mt-2 bg-white border border-gray-200 rounded shadow-md max-h-60 overflow-auto z-40">
+                    {learnersLoading ? (
+                      <div className="p-3 text-sm text-gray-600">Loading learners...</div>
+                    ) : learnersError ? (
+                      <div className="p-3 text-sm text-red-600">Failed to load learners</div>
+                    ) : learners.slice(0, 8).map((s) => (
+                      <button
+                        key={s.id || s.email}
+                        onClick={() => addLearnerToSelection(s)}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <img src={s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || s.email)}&background=ddd`} alt={s.name || s.email} className="w-8 h-8 rounded-full object-cover" />
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-gray-800">{s.name || s.email}</div>
+                          <div className="text-xs text-gray-500">{s.email}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Selected learners chips */}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedLearners.length === 0 ? (
+                    <div className="text-sm text-gray-500">No learners selected yet</div>
+                  ) : (
+                    selectedLearners.map((l) => (
+                      <div key={l.id || l.email} className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
+                        <img src={l.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(l.name || l.email)}&background=ddd`} alt={l.name || l.email} className="w-6 h-6 rounded-full object-cover" />
+                        <div className="text-sm text-gray-700">{l.name || l.email}</div>
+                        <button onClick={() => removeSelectedLearner(l.id || l.email)} className="ml-2 text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    onClick={() => { addAdHocLearner(); setSuggestionsOpen(false); }}
+                    className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-800"
+                  >
+                    Add Typed
+                  </button>
+
+                  <div className="flex-1" />
+
+                  <button
+                    onClick={() => { setSelectedLearners([]); setEnrollInput(""); setSuggestionsOpen(false); }}
+                    className="px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-gray-600"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t pt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setShowEnrollDrawer(false)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitEnrollment}
+                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded"
+                >
+                  Enroll Selected
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* hidden file inputs */}
           <input ref={thumbInputRef} type="file" accept="image/*" className="hidden" />
@@ -688,7 +1003,7 @@ export default function AdminCourseCreator() {
   if (view === "preview" && editingCourse) {
     return (
       <div className="min-h-screen bg-slate-900">
-        <div className="bg-indigo-900 border-b border-indigo-800 px-4 py-3">
+        <div className="bg-white border-b border-indigo-800 px-4 py-3">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button onClick={() => setView("edit")} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition">
@@ -708,22 +1023,22 @@ export default function AdminCourseCreator() {
 
   // EDIT VIEW
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-slate-100">
+    <div className="min-h-screen text-slate-100">
       {notification && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${notification.type === "success" ? "bg-emerald-500" : "bg-red-500"} text-white font-semibold`}>
           {notification.message}
         </div>
       )}
 
-      <div className="sticky top-0 bg-indigo-900/90 backdrop-blur-sm border-b border-indigo-800 z-40">
+      <div className="sticky top-0 bg-white backdrop-blur-sm border-b border-black z-40">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button onClick={() => { setView("list"); setEditingCourse(null); }} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition">
               <ArrowLeft size={18} /> Back
             </button>
             <div>
-              <div className="font-semibold">Course Editor</div>
-              <div className="text-xs text-slate-300">{editingCourse?.title}</div>
+              <div className="font-semibold text-black">Course Editor</div>
+              <div className="text-xs text-black">{editingCourse?.title}</div>
             </div>
           </div>
 
@@ -759,24 +1074,30 @@ export default function AdminCourseCreator() {
         {editingCourse && (
           <div className="space-y-6">
             {/* Course Details */}
-            <div className="bg-slate-800/60 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
-              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+            <div className="bg-white backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+              <h2 className="text-2xl font-bold mb-6  text-black flex items-center gap-2">
                 <Settings size={24} /> Course Details
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold mb-2">Course Title</label>
-                  <input type="text" value={editingCourse.title} onChange={(e) => syncEditingToCourses({ ...editingCourse, title: e.target.value })} className="w-full px-4 py-2 bg-slate-900/50 rounded-lg border border-slate-700 focus:border-blue-500 focus:outline-none" />
+                  <label className="block text-sm font-semibold text-black mb-2">Course Title</label>
+                  <input type="text" 
+                
+                  value={editingCourse.title} onChange={(e) => syncEditingToCourses({ ...editingCourse, title: e.target.value })} className="w-full px-4 py-2 bg-white rounded-lg border border-black focus:border-black focus:outline-none"
+                 placeholder={
+                  editingCourse.title ? "Course Title":"Title"
+                 }
+                 />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold mb-2">Thumbnail</label>
+                  <label className="block text-sm text-black font-semibold mb-2">Thumbnail</label>
                   <div className="flex items-center gap-3">
-                    <div className="w-32 h-20 bg-slate-900 rounded overflow-hidden flex items-center justify-center">
+                    <div className="w-32 h-20 bg-white rounded border borber-black overflow-hidden flex items-center justify-center">
                       {editingCourse.thumbnail ? (
                         <img src={editingCourse.thumbnail} alt="thumb" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="text-slate-500 text-xs">No thumbnail</div>
+                        <div className="text-black text-xs">No thumbnail</div>
                       )}
                     </div>
                     <div className="flex flex-col gap-2">
@@ -787,23 +1108,27 @@ export default function AdminCourseCreator() {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold mb-2">Description</label>
-                  <textarea value={editingCourse.description ?? ""} onChange={(e) => syncEditingToCourses({ ...editingCourse, description: e.target.value })} rows={3} className="w-full px-4 py-2 bg-slate-900/50 rounded-lg border border-slate-700 focus:border-blue-500 focus:outline-none" />
+                  <label className="block text-sm text-black  font-semibold mb-2">Description</label>
+                  <textarea value={editingCourse.description ?? ""} onChange={(e) => syncEditingToCourses({ ...editingCourse, description: e.target.value })} rows={3} className="w-full px-4 py-2 bg-white rounded-lg border border-black focus:border-black focus:outline-none" 
+               placeholder={
+                  editingCourse.title ? "Course Description":"Description"
+                 }
+                 />
                 </div>
 
                 <div>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={!!editingCourse.certificateAvailable} onChange={(e) => syncEditingToCourses({ ...editingCourse, certificateAvailable: e.target.checked })} className="w-5 h-5" />
-                    <span className="font-semibold">Certificate Available</span>
+                    <span className="font-semibold text-black">Certificate Available</span>
                   </label>
                 </div>
               </div>
             </div>
 
             {/* Chapters & Lessons */}
-            <div className="bg-slate-800/60 backdrop-blur-sm rounded-xl p-6 border border-slate-700">
+            <div className="bg-white backdrop-blur-sm rounded-xl p-6 border border-black">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
+                <h2 className="text-2xl text-black font-bold flex items-center gap-2">
                   <BookOpen size={24} /> Chapters & Lessons
                 </h2>
                 <button onClick={addChapter} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg transition">
@@ -813,16 +1138,16 @@ export default function AdminCourseCreator() {
 
               <div className="space-y-4">
                 {editingCourse.chapters.map((chapter) => (
-                  <div key={chapter.id} className="bg-slate-900/50 rounded-lg border border-slate-700">
-                    <div className="p-4 flex items-center justify-between border-b border-slate-700">
+                  <div key={chapter.id} className="bg-white rounded-lg border border-black">
+                    <div className="p-4 flex items-center justify-between border-b border-black">
                       <div className="flex items-center gap-3 flex-1">
-                        <button onClick={() => toggleChapter(chapter.id)} className="text-slate-400 hover:text-slate-200">
+                        <button onClick={() => toggleChapter(chapter.id)} className="text-black hover:text-slate-200">
                           {expandedChapters[chapter.id] ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </button>
-                        <input type="text" value={chapter.title} onChange={(e) => updateChapter(chapter.id, { title: e.target.value })} className="flex-1 px-3 py-2 bg-slate-800 rounded border border-slate-600 focus:border-blue-500 focus:outline-none font-semibold" />
+                        <input type="text" value={chapter.title} onChange={(e) => updateChapter(chapter.id, { title: e.target.value })} className="flex-1 px-3 py-2 text-black bg-white rounded border border-white focus:border-black focus:outline-none font-semibold" />
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => addLesson(chapter.id)} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded transition flex items-center gap-2">
+                        <button onClick={() => addLesson(chapter.id)} className="px-2 py-2 bg-blue-600 hover:bg-blue-700 rounded transition flex items-center gap-2">
                           <Plus size={16} /> Lesson
                         </button>
                         <button onClick={() => deleteChapter(chapter.id)} className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition">
@@ -834,9 +1159,9 @@ export default function AdminCourseCreator() {
                     {expandedChapters[chapter.id] && (
                       <div className="p-4 space-y-3">
                         {chapter.lessons.map((lesson) => (
-                          <div key={lesson.id} className="bg-slate-800/60 rounded-lg p-4 border border-slate-600">
+                          <div key={lesson.id} className="bg-white rounded-lg p-4 border border-black">
                             <div className="flex items-start justify-between mb-3">
-                              <input type="text" value={lesson.title} onChange={(e) => updateLesson(chapter.id, lesson.id, { title: e.target.value })} className="flex-1 px-3 py-2 bg-slate-900 rounded border border-slate-600 focus:border-blue-500 focus:outline-none font-semibold" />
+                              <input type="text" value={lesson.title} onChange={(e) => updateLesson(chapter.id, lesson.id, { title: e.target.value })} className="flex-1 px-3 py-2 bg-white rounded border border-black focus:border-black focus:outline-none font-semibold text-black " />
                               <button onClick={() => deleteLesson(chapter.id, lesson.id)} className="ml-3 px-3 py-2 bg-red-600 hover:bg-red-700 rounded transition">
                                 <Trash2 size={16} />
                               </button>
@@ -845,12 +1170,13 @@ export default function AdminCourseCreator() {
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <div>
                                 <label className="block text-xs text-slate-400 mb-1">Video</label>
+
                                 <div className="flex items-center gap-3">
-                                  <div className="w-48 h-28 bg-black rounded overflow-hidden flex items-center justify-center">
+                                  <div className="w-48 h-28 bg-white rounded overflow-hidden flex items-center justify-center">
                                     {lesson.videoUrl ? (
                                       <video src={lesson.videoUrl} controls className="w-full h-full object-cover" />
                                     ) : (
-                                      <div className="text-slate-400 text-xs">No video</div>
+                                      <div className="text-black text-xs">No video</div>
                                     )}
                                   </div>
                                   <div className="flex flex-col gap-2">
@@ -861,17 +1187,17 @@ export default function AdminCourseCreator() {
                               </div>
 
                               <div>
-                                <label className="block text-xs text-slate-400 mb-1">Duration</label>
-                                <input type="text" value={lesson.duration ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { duration: e.target.value })} placeholder="10:30" className="w-full px-3 py-2 bg-slate-900 rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm" />
+                                <label className="block text-xs text-black mb-1">Duration</label>
+                                <input type="text" value={lesson.duration ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { duration: e.target.value })} placeholder="10:30" className="w-full px-3 py-2 bg-white rounded border border-black focus:border-blue-500 focus:outline-none text-black text-sm" />
                               </div>
                             </div>
 
                             <div className="mb-3">
-                              <label className="block text-xs text-slate-400 mb-1">Lesson Content (HTML)</label>
-                              <textarea value={lesson.content ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { content: e.target.value })} rows={3} className="w-full px-3 py-2 bg-slate-900 rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm font-mono" />
+                              <label className="block text-xs text-black mb-1">Lesson Content</label>
+                              <textarea value={lesson.content ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { content: e.target.value })} rows={3} className="w-full px-3 py-2 text- black bg-white rounded border border-black focus:border-blue-500 focus:outline-none text-sm font-mono" />
                             </div>
 
-                            <div className="border-t border-slate-700 pt-3">
+                            <div className="border-t border-black pt-3">
                               {lesson.quiz ? (
                                 <div className="space-y-3">
                                   <div className="flex items-center justify-between">
@@ -882,7 +1208,7 @@ export default function AdminCourseCreator() {
                                       Remove Quiz
                                     </button>
                                   </div>
-                                  <input type="text" value={lesson.quiz.question} onChange={(e) => updateLesson(chapter.id, lesson.id, { quiz: { ...lesson.quiz!, question: e.target.value } })} placeholder="Quiz question" className="w-full px-3 py-2 bg-slate-900 rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm" />
+                                  <input type="text" value={lesson.quiz.question} onChange={(e) => updateLesson(chapter.id, lesson.id, { quiz: { ...lesson.quiz!, question: e.target.value } })} placeholder="Quiz question" className="w-full px-3 py-2 bg-white rounded border border-black focus:border-blue-500 focus:outline-none text-sm text-black" />
                                   <div className="space-y-2">
                                     {lesson.quiz.options.map((opt, optIdx) => (
                                       <div key={optIdx} className="flex gap-2">
@@ -891,7 +1217,7 @@ export default function AdminCourseCreator() {
                                           const newOptions = [...lesson.quiz!.options];
                                           newOptions[optIdx] = e.target.value;
                                           updateLesson(chapter.id, lesson.id, { quiz: { ...lesson.quiz!, options: newOptions } });
-                                        }} className="flex-1 px-3 py-2 bg-slate-900 rounded border border-slate-600 focus:border-blue-500 focus:outline-none text-sm" />
+                                        }} className="flex-1 px-3 py-2 bg-white rounded border border-black focus:border-black focus:outline-none text-sm text-black" />
                                       </div>
                                     ))}
                                   </div>

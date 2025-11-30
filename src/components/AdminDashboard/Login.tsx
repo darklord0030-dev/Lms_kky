@@ -19,7 +19,6 @@ export default function Login() {
   const [showResendPopup, setShowResendPopup] = useState(false);
 
   const navigate = useNavigate();
-  
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -34,45 +33,31 @@ export default function Login() {
     }
   };
 
-  // const handleResetPassword = () => {
-  //   if (!isValid) return;
-  //   setResetLoading(true);
-  //   setTimeout(() => {
-  //     setResetLoading(false);
-  //     toast.success("Reset email sent successfully");
-  //     setIsForgotModalOpen(false);
-  //   }, 2000);
-  // };
-
-
   const handleResetPassword = async () => {
-  if (!isValid) return;
+    if (!isValid) return;
 
-  try {
-    setResetLoading(true);
-    // const email = "darklord0030@gmail.com"
-    console.log("resetEmail :",resetEmail);
-    
-    const response = await axios.post(
-      "http://localhost:3000/api/auth/request-password-reset", { email: resetEmail });  // assuming you have email in state
+    try {
+      setResetLoading(true);
+      console.log("resetEmail :", resetEmail);
 
-    toast.success(response.data.message || "Reset email sent successfully");
-    setIsForgotModalOpen(false);
-    
-  } catch (error) {
-    console.error("Reset password error:");
-    // toast.error(
-    //   error.response?.data?.message || "Failed to send reset email"
-    // );
-  } finally {
-    setResetLoading(false);
-  }
-};
+      const response = await axios.post(
+        "http://localhost:3000/api/auth/request-password-reset",
+        { email: resetEmail }
+      );
+
+      toast.success(response.data.message || "Reset email sent successfully");
+      setIsForgotModalOpen(false);
+    } catch (error) {
+      console.error("Reset password error:");
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSignup = async (formData: {
     firstname: string;
     lastname: string;
-    email: string;  
+    email: string;
     username: string;
     password: string;
   }) => {
@@ -91,50 +76,60 @@ export default function Login() {
     }
   };
 
-   const handleLogin = async (formData: {
-  usernameOrEmail: string;
-  password: string;
-}) => {
-  try {
-    setIsLoading(true);
+  // --------------------------------------------------------
+  // ✅ UPDATED LOGIN WITH UPPERCASE → LOWERCASE USERTYPE FIX
+  // --------------------------------------------------------
+  const handleLogin = async (formData: {
+    usernameOrEmail: string;
+    password: string;
+  }) => {
+    try {
+      setIsLoading(true);
 
-    const response = await axios.post("http://localhost:3000/api/auth/login", formData);
+      const response = await axios.post(
+        "http://localhost:3000/api/auth/login",
+        formData
+      );
 
-    // const token = response.data?.accessToken;
-    const token = response;
-    const userType = response.data?.userType;
+      const token = response;
+      const rawType = response.data?.userType;
 
-    console.log("Login Response:", response.data);
-    console.log("token:", token);
-    
+      // ⭐ Normalize backend uppercase usertype
+      const userType = rawType ? rawType.toLowerCase() : "user";
 
-    if (token) {
-      localStorage.setItem("token", JSON.stringify(response));;
+      console.log("Login Response:", response.data);
+      console.log("Normalized userType:", userType);
+
+      // Save token
+      if (token) {
+        localStorage.setItem("token", JSON.stringify(response));
+      }
+
+      toast.success("Login successful");
+
+      // Redirect based on normalized type
+      if (userType === "admin") {
+        setViewMode("view");
+      } else if (userType === "learner") {
+        setViewMode("view");
+      } else {
+        console.warn("Unknown userType received:", rawType);
+        setViewMode("view");
+      }
+    } catch (error: any) {
+      console.error(error);
+      const message =
+        error.response?.data?.message || "Something went wrong. Try again.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    toast.success("Login successful");
-
-    // Redirect based on userType
-    if (userType === "ADMIN") {
-      setViewMode("view"); // or navigate("/dashboard");
-    } else if (userType === "LEARNER") {
-     setViewMode("view"); // navigate("/");
-      // alert("Learner logged in, redirecting to Student page.");
-    } else {
-      console.warn("Unknown userType:", userType);
-    }
-
-  } catch (error: any) {
-    console.error(error);
-    const message =
-      error.response?.data?.message || "Something went wrong. Try again.";
-    setError(message);
-    toast.error(message);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
+  // --------------------------------------------------------
+  // SIGNUP FORM
+  // --------------------------------------------------------
   const SignupForm = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [acceptTerms, setAcceptTerms] = useState(false);
@@ -266,6 +261,9 @@ export default function Login() {
     );
   };
 
+  // --------------------------------------------------------
+  // LOGIN FORM
+  // --------------------------------------------------------
   const LoginForm = () => {
     const [formData, setFormData] = useState({
       usernameOrEmail: "",
@@ -335,6 +333,9 @@ export default function Login() {
     );
   };
 
+  // --------------------------------------------------------
+  // SUPPORT UI
+  // --------------------------------------------------------
   const Logo = () => (
     <div className="flex items-center gap-2 justify-center mb-4">
       <div className="bg-orange-500 rounded-full w-8 h-8 flex items-center justify-center">
@@ -350,134 +351,135 @@ export default function Login() {
     </div>
   );
 
- return (
-  <>
-    {/* Show Login/Signup UI only if not in view mode */}
-    {viewMode !== "view" && (
-      <div className="min-h-screen w-full flex items-center justify-center p-4 bg-cover bg-center">
-        {viewMode === "signup" && <SignupForm />}
-        {viewMode === "login" && <LoginForm />}
-      </div>
-    )}
-
-    {/* Show main app content after successful login/signup */}
-    {viewMode === "view" && (
-      <div className="min-h-screen w-full bg-white">
-        <AppContent />
-      </div>
-    )}
-
-    {/* Forgot Password Modal */}
-    {isForgotModalOpen && (
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-md flex justify-center items-center z-50"
-        onClick={() => setIsForgotModalOpen(false)}
-      >
-        <div
-          className="bg-white rounded-2xl shadow-2xl p-7 w-[420px] relative"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
-            onClick={() => setIsForgotModalOpen(false)}
-          >
-            ✕
-          </button>
-          <h2 className="text-2xl font-semibold text-gray-900 text-center">
-            Forgot Password?
-          </h2>
-          <p className="text-gray-500 text-center mt-1 text-sm">
-            Enter your email to receive a secure password reset link.
-          </p>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleResetPassword();
-            }}
-            className="mt-6"
-          >
-            <label className="text-sm font-medium text-gray-700">
-              Registered Email
-            </label>
-            <input
-              type="email"
-              placeholder="email@company.com"
-              value={resetEmail}
-              onChange={handleEmailChange}
-              // value={email}
-              // onChange={(e) => setEmail(e.target.value)}
-              required
-              className={`w-full border p-3 rounded-lg mt-1 outline-none transition ${
-                emailError
-                  ? "border-red-500 focus:ring-red-400"
-                  : "border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-400"
-              }`}
-            />
-            {emailError && (
-              <p className="text-red-500 text-sm mt-1">{emailError}</p>
-            )}
-            <button
-              type="submit"
-              disabled={!isValid || resetLoading}
-              className={`mt-4 w-full py-3 rounded-lg font-semibold transition-colors ${
-                isValid
-                  ? "bg-blue-600 hover:bg-blue-700 text-white"
-                  : "bg-gray-300 text-gray-600 cursor-not-allowed"
-              }`}
-            >
-              {resetLoading ? "Sending..." : "Send Reset Link"}
-            </button>
-          </form>
-
-          <div style={{ textAlign: "center", marginTop: "8px" }}>
-            <a
-              href="#"
-              style={{
-                color: "#2563eb",
-                textDecoration: "underline",
-                fontWeight: 300,
-                fontSize: "0.85rem",
-                fontFamily: "Inter, Arial, sans-serif",
-                transition: "color 0.2s ease",
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.color = "#d8261d")}
-              onMouseOut={(e) => (e.currentTarget.style.color = "#2563eb")}
-              onClick={(e) => {
-                e.preventDefault();
-                setShowResendPopup(true);
-                setTimeout(() => setShowResendPopup(false), 3000);
-              }}
-            >
-              Resend link
-            </a>
-
-            {showResendPopup && (
-              <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-                <div className="bg-white rounded-lg shadow-xl p-6 w-80 text-center animate-fadeIn">
-                  <h3 className="text-lg font-semibold text-gray-800">
-                    Link Sent Again!
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-2">
-                    A new reset link has been sent to your email.
-                  </p>
-                  <button
-                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-                    onClick={() => setShowResendPopup(false)}
-                  >
-                    OK
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <p className="text-xs text-gray-400 text-center mt-4">
-            We never share your email with anyone.
-          </p>
+  // --------------------------------------------------------
+  // MAIN RETURN
+  // --------------------------------------------------------
+  return (
+    <>
+      {/* Show Login/Signup UI only if not in view mode */}
+      {viewMode !== "view" && (
+        <div className="min-h-screen w-full flex items-center justify-center p-4 bg-cover bg-center">
+          {viewMode === "signup" && <SignupForm />}
+          {viewMode === "login" && <LoginForm />}
         </div>
-      </div>
-    )}
-  </>
-);
+      )}
+
+      {/* Show main app content after successful login/signup */}
+      {viewMode === "view" && (
+        <div className="min-h-screen w-full bg-white">
+          <AppContent />
+        </div>
+      )}
+
+      {/* Forgot Password Modal */}
+      {isForgotModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex justify-center items-center z-50"
+          onClick={() => setIsForgotModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl p-7 w-[420px] relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
+              onClick={() => setIsForgotModalOpen(false)}
+            >
+              ✕
+            </button>
+            <h2 className="text-2xl font-semibold text-gray-900 text-center">
+              Forgot Password?
+            </h2>
+            <p className="text-gray-500 text-center mt-1 text-sm">
+              Enter your email to receive a secure password reset link.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleResetPassword();
+              }}
+              className="mt-6"
+            >
+              <label className="text-sm font-medium text-gray-700">
+                Registered Email
+              </label>
+              <input
+                type="email"
+                placeholder="email@company.com"
+                value={resetEmail}
+                onChange={handleEmailChange}
+                required
+                className={`w-full border p-3 rounded-lg mt-1 outline-none transition ${
+                  emailError
+                    ? "border-red-500 focus:ring-red-400"
+                    : "border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-400"
+                }`}
+              />
+              {emailError && (
+                <p className="text-red-500 text-sm mt-1">{emailError}</p>
+              )}
+              <button
+                type="submit"
+                disabled={!isValid || resetLoading}
+                className={`mt-4 w-full py-3 rounded-lg font-semibold transition-colors ${
+                  isValid
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                }`}
+              >
+                {resetLoading ? "Sending..." : "Send Reset Link"}
+              </button>
+            </form>
+
+            <div style={{ textAlign: "center", marginTop: "8px" }}>
+              <a
+                href="#"
+                style={{
+                  color: "#2563eb",
+                  textDecoration: "underline",
+                  fontWeight: 300,
+                  fontSize: "0.85rem",
+                  fontFamily: "Inter, Arial, sans-serif",
+                  transition: "color 0.2s ease",
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.color = "#d8261d")}
+                onMouseOut={(e) => (e.currentTarget.style.color = "#2563eb")}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setShowResendPopup(true);
+                  setTimeout(() => setShowResendPopup(false), 3000);
+                }}
+              >
+                Resend link
+              </a>
+
+              {showResendPopup && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+                  <div className="bg-white rounded-lg shadow-xl p-6 w-80 text-center animate-fadeIn">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      Link Sent Again!
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-2">
+                      A new reset link has been sent to your email.
+                    </p>
+                    <button
+                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+                      onClick={() => setShowResendPopup(false)}
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-4">
+              We never share your email with anyone.
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

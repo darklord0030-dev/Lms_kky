@@ -33,7 +33,7 @@ import UserReport from "./components/AdminDashboard/UserReport";
 import CourseReport from "./components/AdminDashboard/CourseReport";
 import ReportsLandingPage from "./components/AdminDashboard/ReportsLandingPage";
 import Settings from "./components/AdminDashboard/Settings";
-import Workflow from "./components/AdminDashboard/Workflow";
+import WorkflowBuilder from "./components/AdminDashboard/WorkflowBuilder";
 import UserDetailsPage from "./components/AdminDashboard/UserDetailsPage";
 import CourseDetailsPage from "./components/AdminDashboard/CourseDetailsPage";
 import GroupsMainPage from "./components/AdminDashboard/GroupsMainPage";
@@ -60,18 +60,30 @@ import TestPage from "./components/LearnerDashboard/TestsPage";
 import CertificatesPage from "./components/LearnerDashboard/CertificatesPage";
 import AssignmentsPage from "./components/LearnerDashboard/AssignmentsPage";
 import Home from "./components/LearnerDashboard/Home";
+import CourseCard from "./components/LearnerDashboard/CourseCard"
 
 
 
 
 // --- Main App ---
+// UserType definition
+type UserType = "admin" | "teacher" | "learner";
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
-  const [userType, setUserType] = useState<'admin' | 'teacher' | 'learner'>('admin'); // Add userType state
+  const [userType, setUserType] = useState<UserType>("admin"); 
 
   return (
     <Router>
-      {authenticated ? <AppContent userType={userType} /> : <Login setAuthenticated={setAuthenticated} setUserType={setUserType} />}
+      {authenticated ? (
+        <AppContent userType={userType} />
+      ) : (
+        <Login
+          setAuthenticated={setAuthenticated}
+          setUserType={setUserType}
+        />
+      )}
     </Router>
   );
 }
+3

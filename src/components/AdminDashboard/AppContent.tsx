@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
@@ -27,7 +27,7 @@ import Settings from "./Settings";
 import GroupsPage from "./GroupsPage";
 import GroupsMainPage from "./GroupsMainPage";
 import AddGroupForm from "./AddGroupForm";
-// import Workflow from "./Workflow";
+import WorkflowBuilder from "./WorkflowBuilder";
 import { Help } from "./Help";
 import CourseBuilder from "./CourseBuilder";
 import VideoPlayer from "./VideoPlayer";
@@ -38,16 +38,16 @@ import CourseApp from "./CourseApp";
 import StudentApp from "../LearnerDashboard/StudentApp";
 import StudentView from "./StudentView";
 import TeacherView from "./TeacherView";
-import Teacher from "./Teacher";
 import AdminCourseCreator from "./AdminCourseCreator";
 import CertificatesPage from "../LearnerDashboard/CertificatesPage";
 import AssignmentsPage from "../LearnerDashboard/AssignmentsPage";
 import TestPage from "../LearnerDashboard/TestsPage";
 import Home from "../LearnerDashboard/Home";
+import CourseCard from "../LearnerDashboard/CourseCard";
 
-
-
-// ✅ Stub for AddUserType component
+// ------------------------------------
+// Stub Component
+// ------------------------------------
 const AddUserType: React.FC<{
   onClose: () => void;
   onSave: (data: { name: string; permissions: string[] }) => void;
@@ -75,7 +75,10 @@ const AddUserType: React.FC<{
     </div>
   );
 };
-  
+
+// ------------------------------------
+// Main Component
+// ------------------------------------
 export default function AppContent() {
   const location = useLocation();
 
@@ -83,6 +86,35 @@ export default function AppContent() {
   const [userTypes, setUserTypes] = useState<
     { name: string; permissions: string[] }[]
   >([]);
+
+  // ⭐ ADDED: userType state for Sidebar/Header
+  const [userType, setUserType] = useState<"admin" | "learner">("learner");
+
+  // ⭐ ADDED: load userType from localStorage token (uppercase → lowercase)
+  useEffect(() => {
+    const stored = localStorage.getItem("token");
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored);
+
+      const rawType =
+        parsed?.data?.userType ||
+        parsed?.data?.usertype ||
+        parsed?.userType ||
+        parsed?.usertype;
+
+      if (rawType) {
+        const normalized = rawType.toLowerCase();
+
+        if (normalized === "admin" || normalized === "learner") {
+          setUserType(normalized);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse user token:", e);
+    }
+  }, []);
 
   const openUserTypeModal = () => setIsUserTypeModalOpen(true);
   const closeUserTypeModal = () => setIsUserTypeModalOpen(false);
@@ -96,17 +128,24 @@ export default function AppContent() {
   return (
     <>
       <Toaster position="top-right" />
+
+      {/* Modal */}
       {isUserTypeModalOpen && (
-        <AddUserType onClose={closeUserTypeModal} onSave={handleSaveUserType} />
+        <AddUserType
+          onClose={closeUserTypeModal}
+          onSave={handleSaveUserType}
+        />
       )}
 
+      {/* If CourseBuilder page → render without Layout */}
       {isCourseBuilderPage ? (
-        // ✅ Render CourseBuilder outside Layout
         <Routes>
           <Route path="/coursebuilder" element={<CourseBuilder />} />
         </Routes>
       ) : (
-        <Layout>
+
+        // ⭐ PASSED userType to Layout (important!)
+        <Layout userType={userType}>
           <Routes>
             {/* Dashboard */}
             <Route
@@ -120,6 +159,7 @@ export default function AppContent() {
                       <RecentActivity />
                     </div>
                   </div>
+
                   <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
                     <ReportChart />
                   </div>
@@ -127,19 +167,20 @@ export default function AppContent() {
               }
             />
 
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
             {/* Users */}
             <Route path="/users" element={<UserPage />} />
             <Route path="/userdetails/user/:id" element={<UserDetailsPage />} />
 
             {/* Courses */}
-            <Route path="/" element={<DashboardStats />} />
             <Route path="/courses" element={<CourseGrid />} />
             <Route path="/coursedetails/:id" element={<CourseDetailsPage />} />
             <Route path="/adduser" element={<AddUser />} />
             <Route path="/unitoption" element={<UnitOptions />} />
-            <Route path="/Setup"   element={<CourseManager />} /> 
-            <Route path="/view"   element={<CourseApp />} /> 
-             <Route path="/student"   element={<CoursePlayer />} /> 
+            <Route path="/Setup" element={<CourseManager />} />
+            <Route path="/view" element={<CourseApp />} />
+            <Route path="/student" element={<CoursePlayer />} />
 
             {/* Skills */}
             <Route path="/skills" element={<Skills />} />
@@ -163,7 +204,7 @@ export default function AppContent() {
             <Route path="/messages" element={<Messages />} />
 
             {/* Settings */}
-              <Route
+            <Route
               path="/settings"
               element={<Settings onNavigateToAddUserType={openUserTypeModal} />}
             />
@@ -182,49 +223,35 @@ export default function AppContent() {
               }
             />
 
-            {/* Workflow
-            <Route path="/workflow" element={<Workflow />} /> */}
+            {/* Workflow */}
+            <Route path="/workflow" element={<WorkflowBuilder />} />
 
             {/* Help */}
             <Route path="/help" element={<Help />} />
 
-             <Route path="/video" element={<VideoPlayer />} />
+            {/* Media & Tools */}
+            <Route path="/video" element={<VideoPlayer />} />
+            <Route path="/reset" element={<Reset />} />
 
-             <Route path="/reset" element={<Reset />} />
+            {/* Student & Teacher */}
+            <Route path="/new" element={<StudentApp />} />
+            <Route path="/learner" element={<StudentView />} />
+            <Route path="/teacher" element={<TeacherView />} />
 
-             <Route path="/new" element={<StudentApp />} />
+            {/* Admin Course Creator */}
+            <Route path="/admin" element={<AdminCourseCreator />} />
 
-          
+            {/* Learner Dashboard */}
+            <Route path="/certificates" element={<CertificatesPage />} />
+            <Route path="/assignments" element={<AssignmentsPage />} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/card" element={<CourseCard />} />
+            <Route path="/testpage" element={<TestPage />} />
 
-
-                <Route path="/" element={<TeacherView />} />
-                <Route path="/learner" element={<StudentView />} />
-                <Route path="/teacher" element={<TeacherView />} />
-
-                {/* <Route path="/teach" element={<Teacher />} /> */}
-
-                <Route path="/admin" element={<AdminCourseCreator />} />
-                
-                <Route path="/certificates" element={<CertificatesPage />} />
-
-                <Route path="/testpage" element={<TestPage />} />
-
-                <Route path="/assignments" element={<AssignmentsPage />} />
-                <Route path="/certificates" element={<CertificatesPage />} />
-                 <Route path="/home" element={<Home />} />
-
-
-
-
-            {/* Default */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-
-            
-            
+            {/* Default - Catch all */}
+            {/* <Route path="*" element={<Navigate to="/dashboard" replace />} /> */}
           </Routes>
         </Layout>
-        
-        
       )}
     </>
   );
