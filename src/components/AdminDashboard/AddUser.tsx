@@ -5,7 +5,7 @@ import axios from "axios";
 
 export default function AddUserForm() {
   const location = useLocation();
-  const editingUser = location.state?.user;
+  const editingUser = location.state?.user || null;
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -20,51 +20,56 @@ export default function AddUserForm() {
     gender: editingUser?.gender || "male",
     isActive: editingUser?.active ?? true,
     inActive: editingUser?.inActive || "",
-   
   });
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
-    
-    const lastLogin = new Date().toISOString(); 
 
-    const payload = {
+    // UserType → API Format (SUPER_ADMIN etc.)
+    const formattedUsertype = formData.usertype.toUpperCase().replace("-", "_");
+
+    const payload: any = {
       firstname: formData.firstName.trim(),
       lastname: formData.lastName.trim(),
       email: formData.email.trim(),
       bio: formData.bio.trim(),
       username: formData.username.trim(),
-      password: formData.password || undefined,
       language: formData.language,
-      usertype: formData.usertype.toUpperCase().replace("-", "_"),
+      usertype: formattedUsertype,
       gender: formData.gender,
       active: formData.isActive,
       inActive: formData.inActive || null,
       token: null,
-      lastLogin,
+      lastLogin: new Date().toISOString(),
     };
+
+    // ✔ Only include password while creating OR if user manually typed new password
+    if (!editingUser && formData.password.length < 8) {
+      alert("Password must be at least 8 characters for new user.");
+      return;
+    }
+
+    if (formData.password) {
+      payload.password = formData.password;
+    }
 
     try {
       let response;
 
       if (editingUser?.id) {
-        // Update user
+        // UPDATE USER
         response = await axios.put(
-          `http://localhost:3000/api/user/${Number(editingUser.id)}`,
+          `http://localhost:3000/api/user/${editingUser.id}`,
           payload
         );
       } else {
-        // Create user
-        response = await axios.post(
-          "http://localhost:3000/api/user",
-          payload
-        );
+        // CREATE USER
+        response = await axios.post("http://localhost:3000/api/user", payload);
       }
 
-      const savedUser = response.data.data; // ✅ actual user object
+      const savedUser = response.data.data;
       navigate("/users", { state: { user: savedUser } });
-
-    } catch (error: any) {
+    } catch (error) {
       console.error("❌ Error saving user:", error);
       alert("Failed to save user. Check console for details.");
     }
@@ -101,7 +106,10 @@ export default function AddUserForm() {
                 {formData.gender === "male" ? (
                   <User className="w-32 h-32 text-white" strokeWidth={1.5} />
                 ) : (
-                  <UserCircle2 className="w-32 h-32 text-white" strokeWidth={1.5} />
+                  <UserCircle2
+                    className="w-32 h-32 text-white"
+                    strokeWidth={1.5}
+                  />
                 )}
               </div>
             </div>
@@ -117,7 +125,9 @@ export default function AddUserForm() {
                   type="text"
                   required
                   value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, firstName: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -131,7 +141,9 @@ export default function AddUserForm() {
                   type="text"
                   required
                   value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, lastName: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -145,17 +157,23 @@ export default function AddUserForm() {
                   type="email"
                   required
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Bio */}
               <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">Bio</label>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Bio
+                </label>
                 <textarea
                   value={formData.bio}
-                  onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, bio: e.target.value })
+                  }
                   rows={8}
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
@@ -167,6 +185,7 @@ export default function AddUserForm() {
           <div className="mt-12 max-w-2xl space-y-6">
             <h2 className="text-2xl font-normal mb-6">Sign in credentials</h2>
 
+            {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
                 Username <span className="text-red-500">*</span>
@@ -175,34 +194,49 @@ export default function AddUserForm() {
                 type="text"
                 required
                 value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })} 
-               className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-               aria-required
-            />
+                onChange={(e) =>
+                  setFormData({ ...formData, username: e.target.value })
+                }
+                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
 
+            {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Password</label>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Password
+              </label>
+
               <input
                 type="password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Type new password"
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                placeholder={
+                  editingUser ? "Type new password (optional)" : "Type password"
+                }
                 className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 placeholder:italic"
-             required
-             />
+                required={!editingUser} // Only required for new user
+              />
+
               <p className="mt-2 text-sm text-gray-600 italic">
-                Passwords must be at least 8 characters, with uppercase, lowercase, and number.
+                Passwords must be at least 8 characters, with uppercase,
+                lowercase, and number.
               </p>
             </div>
 
             {/* Language */}
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Language</label>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Language
+              </label>
               <div className="relative">
                 <select
                   value={formData.language}
-                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, language: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-10"
                 >
                   <option>English</option>
@@ -223,7 +257,9 @@ export default function AddUserForm() {
                 <select
                   required
                   value={formData.usertype}
-                  onChange={(e) => setFormData({ ...formData, usertype: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, usertype: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-10"
                 >
                   <option>Super-Admin</option>
@@ -237,12 +273,16 @@ export default function AddUserForm() {
 
             {/* Gender */}
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">Gender <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-900 mb-2">
+                Gender <span className="text-red-500">*</span>
+              </label>
               <div className="relative">
                 <select
                   required
                   value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, gender: e.target.value })
+                  }
                   className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-10"
                 >
                   <option value="male">Male</option>
@@ -252,13 +292,15 @@ export default function AddUserForm() {
               </div>
             </div>
 
-            {/* Active/Deactivate */}
+            {/* Active / Deactivate */}
             <div className="flex gap-6 items-center">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={formData.isActive}
-                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, isActive: e.target.checked })
+                  }
                   className="w-5 h-5 rounded border-gray-300 text-blue-600"
                 />
                 Active
@@ -271,7 +313,9 @@ export default function AddUserForm() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      inActive: e.target.checked ? new Date().toISOString() : "",
+                      inActive: e.target.checked
+                        ? new Date().toISOString()
+                        : "",
                     })
                   }
                   className="w-5 h-5 rounded border-gray-300 text-blue-600"
@@ -288,6 +332,7 @@ export default function AddUserForm() {
               >
                 Save
               </button>
+
               <button
                 type="button"
                 onClick={handleCancel}

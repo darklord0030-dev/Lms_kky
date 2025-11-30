@@ -19,6 +19,7 @@ export default function Login() {
   const [showResendPopup, setShowResendPopup] = useState(false);
 
   const navigate = useNavigate();
+  
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -117,8 +118,8 @@ export default function Login() {
     if (userType === "ADMIN") {
       setViewMode("view"); // or navigate("/dashboard");
     } else if (userType === "LEARNER") {
-      // navigate("/");
-      alert("Learner logged in, redirecting to Student page.");
+     setViewMode("view"); // navigate("/");
+      // alert("Learner logged in, redirecting to Student page.");
     } else {
       console.warn("Unknown userType:", userType);
     }

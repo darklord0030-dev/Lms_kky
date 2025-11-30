@@ -27,7 +27,7 @@ import Settings from "./Settings";
 import GroupsPage from "./GroupsPage";
 import GroupsMainPage from "./GroupsMainPage";
 import AddGroupForm from "./AddGroupForm";
-import Workflow from "./Workflow";
+// import Workflow from "./Workflow";
 import { Help } from "./Help";
 import CourseBuilder from "./CourseBuilder";
 import VideoPlayer from "./VideoPlayer";
@@ -182,8 +182,8 @@ export default function AppContent() {
               }
             />
 
-            {/* Workflow */}
-            <Route path="/workflow" element={<Workflow />} />
+            {/* Workflow
+            <Route path="/workflow" element={<Workflow />} /> */}
 
             {/* Help */}
             <Route path="/help" element={<Help />} />

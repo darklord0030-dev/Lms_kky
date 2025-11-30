@@ -12,6 +12,7 @@ import axios from "axios";
 
 // Layout & Sidebar
 import Layout from "./components/AdminDashboard/Layout";
+import ProtectedRoute from "./components/AdminDashboard/ProtectedRoute";
 
 // LMS Pages
 import { DashboardStats } from "./components/AdminDashboard/DashboardStats";

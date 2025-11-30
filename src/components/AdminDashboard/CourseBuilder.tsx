@@ -52,7 +52,7 @@ import ContentUnitContent from "./CourseStructure";
 import VideoUnitContent from "./VideoUnitContent";
 import ScormUnitContent from "./ScormUnitContent";
 import FrameUnitContent from "./FrameUnitContent";
-import WebContent from "./workflowBuilder";
+import WebContent from "./WebContent";
 import UnitOptionsPanel from "./UnitOptionsPanel";
 
 
