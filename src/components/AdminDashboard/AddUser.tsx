@@ -1,14 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { User, UserCircle2, ChevronDown } from "lucide-react";
 import axios from "axios";
+import toast, { Toaster } from "react-hot-toast";
+
+type FormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  bio: string;
+  username: string;
+  password: string;
+  language: string;
+  usertype: string;
+  gender: string;
+  isActive: boolean;
+  inActive: string;
+};
 
 export default function AddUserForm() {
   const location = useLocation();
-  const editingUser = location.state?.user || null;
+  const editingUser = (location.state as any)?.user || null;
   const navigate = useNavigate();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormState>({
     firstName: editingUser?.firstname || "",
     lastName: editingUser?.lastname || "",
     email: editingUser?.email || "",
@@ -16,17 +31,75 @@ export default function AddUserForm() {
     username: editingUser?.username || "",
     password: "",
     language: editingUser?.language || "English",
-    usertype: editingUser?.usertype || "Super-Admin",
+    usertype: editingUser?.usertype ? prettifyUserType(editingUser.usertype) : "Super-Admin",
     gender: editingUser?.gender || "male",
     isActive: editingUser?.active ?? true,
     inActive: editingUser?.inActive || "",
   });
 
+  // Validation state
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pwStrength, setPwStrength] = useState<"empty" | "weak" | "medium" | "strong">("empty");
+
+  // helpers
+  function toApiUserType(value: string) {
+    return value.toUpperCase().replace("-", "_").replace(" ", "_");
+  }
+  function prettifyUserType(apiValue: string) {
+    // from SUPER_ADMIN -> Super-Admin
+    return apiValue
+      .toLowerCase()
+      .split("_")
+      .map((s) => s[0].toUpperCase() + s.slice(1))
+      .join("-");
+  }
+
+  useEffect(() => {
+    // compute password strength
+    const pw = formData.password || "";
+    if (!pw) return setPwStrength("empty");
+
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+    if (score <= 1) setPwStrength("weak");
+    else if (score === 2 || score === 3) setPwStrength("medium");
+    else setPwStrength("strong");
+  }, [formData.password]);
+
+  const validate = (): boolean => {
+    const err: Record<string, string> = {};
+
+    if (!formData.firstName.trim()) err.firstName = "First name is required";
+    if (!formData.lastName.trim()) err.lastName = "Last name is required";
+    if (!formData.username.trim()) err.username = "Username is required";
+
+    // simple email regex
+    if (!formData.email.trim()) err.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
+      err.email = "Invalid email format";
+
+    // password: required only on create
+    if (!editingUser && formData.password.length < 8)
+      err.password = "Password must be at least 8 characters";
+
+    // when password provided on update, ensure min length
+    if (editingUser && formData.password && formData.password.length > 0 && formData.password.length < 8)
+      err.password = "Password must be at least 8 characters";
+
+    setErrors(err);
+    return Object.keys(err).length === 0;
+  };
+
   const handleSubmit = async (e: any) => {
     e.preventDefault();
-
-    // UserType → API Format (SUPER_ADMIN etc.)
-    const formattedUsertype = formData.usertype.toUpperCase().replace("-", "_");
+    if (!validate()) {
+      toast.error("Please fix the errors before saving.");
+      return;
+    }
 
     const payload: any = {
       firstname: formData.firstName.trim(),
@@ -35,43 +108,34 @@ export default function AddUserForm() {
       bio: formData.bio.trim(),
       username: formData.username.trim(),
       language: formData.language,
-      usertype: formattedUsertype,
+      usertype: toApiUserType(formData.usertype),
       gender: formData.gender,
       active: formData.isActive,
       inActive: formData.inActive || null,
+      // registrationDate left to backend default (Prisma)
+      lastLogin: editingUser?.lastLogin || new Date().toISOString(),
       token: null,
-      lastLogin: new Date().toISOString(),
     };
 
-    // ✔ Only include password while creating OR if user manually typed new password
-    if (!editingUser && formData.password.length < 8) {
-      alert("Password must be at least 8 characters for new user.");
-      return;
-    }
-
-    if (formData.password) {
+    if (formData.password && formData.password.length >= 8) {
       payload.password = formData.password;
     }
 
     try {
       let response;
-
       if (editingUser?.id) {
-        // UPDATE USER
-        response = await axios.put(
-          `http://localhost:3000/api/user/${editingUser.id}`,
-          payload
-        );
+        response = await axios.put(`http://localhost:3000/api/user/${editingUser.id}`, payload);
+        toast.success("User updated successfully");
       } else {
-        // CREATE USER
         response = await axios.post("http://localhost:3000/api/user", payload);
+        toast.success("User created successfully");
       }
-
       const savedUser = response.data.data;
       navigate("/users", { state: { user: savedUser } });
-    } catch (error) {
-      console.error("❌ Error saving user:", error);
-      alert("Failed to save user. Check console for details.");
+    } catch (error: any) {
+      console.error("Error saving user:", error);
+      const msg = error?.response?.data?.error || "Failed to save user";
+      toast.error(msg);
     }
   };
 
@@ -89,10 +153,12 @@ export default function AddUserForm() {
       isActive: true,
       inActive: "",
     });
+    setErrors({});
   };
 
   return (
     <div className="min-h-screen bg-white">
+      <Toaster position="top-right" />
       <div className="max-w-7xl mx-auto px-8 py-8">
         <h1 className="text-4xl font-normal mb-8">
           {editingUser ? "Edit User" : "Add User"}
@@ -128,8 +194,9 @@ export default function AddUserForm() {
                   onChange={(e) =>
                     setFormData({ ...formData, firstName: e.target.value })
                   }
-                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 ${errors.firstName ? "focus:ring-red-500" : "focus:ring-blue-500"}`}
                 />
+                {errors.firstName && <p className="text-sm text-red-600 mt-1">{errors.firstName}</p>}
               </div>
 
               {/* Last Name */}
@@ -144,8 +211,9 @@ export default function AddUserForm() {
                   onChange={(e) =>
                     setFormData({ ...formData, lastName: e.target.value })
                   }
-                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 ${errors.lastName ? "focus:ring-red-500" : "focus:ring-blue-500"}`}
                 />
+                {errors.lastName && <p className="text-sm text-red-600 mt-1">{errors.lastName}</p>}
               </div>
 
               {/* Email */}
@@ -160,8 +228,9 @@ export default function AddUserForm() {
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
-                  className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 ${errors.email ? "focus:ring-red-500" : "focus:ring-blue-500"}`}
                 />
+                {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
               </div>
 
               {/* Bio */}
@@ -197,8 +266,9 @@ export default function AddUserForm() {
                 onChange={(e) =>
                   setFormData({ ...formData, username: e.target.value })
                 }
-                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 ${errors.username ? "focus:ring-red-500" : "focus:ring-blue-500"}`}
               />
+              {errors.username && <p className="text-sm text-red-600 mt-1">{errors.username}</p>}
             </div>
 
             {/* Password */}
@@ -216,9 +286,26 @@ export default function AddUserForm() {
                 placeholder={
                   editingUser ? "Type new password (optional)" : "Type password"
                 }
-                className="w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 placeholder:italic"
-                required={!editingUser} // Only required for new user
+                className={`w-full px-4 py-3 bg-gray-50 border-0 rounded-md focus:outline-none focus:ring-2 placeholder:text-gray-400 placeholder:italic ${errors.password ? "focus:ring-red-500" : "focus:ring-blue-500"}`}
+                required={!editingUser}
               />
+
+              {pwStrength !== "empty" && (
+                <div className="mt-2">
+                  <div className="h-2 w-full bg-gray-200 rounded">
+                    <div
+                      className={`h-2 rounded ${pwStrength === "weak" ? "w-1/4 bg-red-500" : pwStrength === "medium" ? "w-2/4 bg-yellow-400" : "w-3/4 bg-green-500"}`}
+                    />
+                  </div>
+                  <p className="text-sm mt-1 italic">
+                    {pwStrength === "weak" && "Weak password"}
+                    {pwStrength === "medium" && "Medium strength"}
+                    {pwStrength === "strong" && "Strong password"}
+                  </p>
+                </div>
+              )}
+
+              {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password}</p>}
 
               <p className="mt-2 text-sm text-gray-600 italic">
                 Passwords must be at least 8 characters, with uppercase,
@@ -313,9 +400,7 @@ export default function AddUserForm() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      inActive: e.target.checked
-                        ? new Date().toISOString()
-                        : "",
+                      inActive: e.target.checked ? new Date().toISOString() : "",
                     })
                   }
                   className="w-5 h-5 rounded border-gray-300 text-blue-600"

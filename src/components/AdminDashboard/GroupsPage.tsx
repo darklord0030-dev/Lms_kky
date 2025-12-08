@@ -12,7 +12,8 @@ interface Group {
   name: string;
   description?: string;
   branch?: string;
-  date?: Date; // string for consistency with backend
+  // keep backend-consistency: use string here (ISO date) to avoid Date parsing issues
+  date?: string;
   autoEnroll?: boolean;
   groupKey?: string;
 }
@@ -31,25 +32,38 @@ const GroupsPage: React.FC = () => {
   const massActionRef = useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
 
- const fetchGroups = async () => {
-  try {
-    setLoading(true);
-    const res = await axios.get("http://localhost:3000/api/group");
-    const data: Group[] = res.data.map((g: any) => ({
-      ...g,
-      date: g.date ? new Date(g.date) : undefined, // convert to Date
-    }));
-    setGroups(data);
-  } catch (err) {
-    console.error("Fetch groups error:", err);
-    toast.error("Failed to load groups");
-  } finally {
-    setLoading(false);
-  }
-};
+  // fetchGroups with AbortController to avoid state updates on unmounted component
+  const fetchGroups = async () => {
+    const controller = new AbortController();
+    try {
+      setLoading(true);
+      const res = await axios.get("http://localhost:3000/api/group", {
+        signal: controller.signal,
+      });
+      const raw = Array.isArray(res.data) ? res.data : [];
+      const data: Group[] = raw.map((g: any) => ({
+        ...g,
+        date: g.date ? String(g.date) : undefined,
+      }));
+      setGroups(data);
+    } catch (err: any) {
+      if (err?.name === "CanceledError" || err?.message === "canceled") {
+        // request was cancelled, ignore
+        return;
+      }
+      console.error("Fetch groups error:", err);
+      toast.error("Failed to load groups");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchGroups();
+    // no cleanup needed for function-local controller (fetchGroups handles controller)
+    // we still return noop to satisfy linting in environments that expect cleanup
+    return () => {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -63,7 +77,7 @@ const GroupsPage: React.FC = () => {
   }, []);
 
   const toggleSelectGroup = (id: number) => {
-    setSelectedGroups(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    setSelectedGroups((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   };
 
   const handleDelete = (group: Group) => setDeleteGroup(group);
@@ -73,8 +87,8 @@ const GroupsPage: React.FC = () => {
     try {
       await axios.delete(`http://localhost:3000/api/group/${deleteGroup.id}`);
       toast.success("Group deleted successfully");
-      fetchGroups();
-      setSelectedGroups(prev => prev.filter(id => id !== deleteGroup.id));
+      await fetchGroups();
+      setSelectedGroups((prev) => prev.filter((id) => id !== deleteGroup.id));
     } catch (err) {
       console.error("Delete error:", err);
       toast.error("Failed to delete group");
@@ -92,7 +106,7 @@ const GroupsPage: React.FC = () => {
     try {
       await axios.post("http://localhost:3000/api/group/deleteMany", { ids: selectedGroups });
       toast.success("Selected groups deleted");
-      fetchGroups();
+      await fetchGroups();
       setSelectedGroups([]);
     } catch (err) {
       console.error("Mass delete error:", err);
@@ -102,9 +116,7 @@ const GroupsPage: React.FC = () => {
     }
   };
 
-  const filteredGroups = groups.filter(g =>
-    g.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (showAddForm) {
     return (
@@ -131,12 +143,10 @@ const GroupsPage: React.FC = () => {
         <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Groups</h1>
 
         {loading ? (
-          <div className="flex items-center justify-center mt-10 text-gray-600">
-            Loading groups...
-          </div>
+          <div className="flex items-center justify-center mt-10 text-gray-600">Loading groups...</div>
         ) : groups.length === 0 ? (
-          <div className="flex flex-col items-center text-center space-y-6 max-w-md mx-auto mt-10">
-            <img src={emptyIllustration} alt="No groups" className="w-80 mb-4" />
+          <div className="flex flex-col items-center text-center space-y-6 max-w-md mx-auto mt-14">
+            <img src={emptyIllustration} alt="No groups" className="w-96 mb-4" />
             <h2 className="text-xl md:text-2xl font-semibold text-gray-900">There are no groups yet!</h2>
             <p className="text-gray-600 text-base md:text-lg">
               Groups allow you to assign sets of courses to several users at once.
@@ -158,7 +168,7 @@ const GroupsPage: React.FC = () => {
                   type="text"
                   placeholder="Search"
                   value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full border border-blue-800 rounded-md px-4 py-2 pl-5 text-sm focus:ring-2 focus:ring-blue-800 focus:border-blue-800"
                 />
               </div>
@@ -166,14 +176,16 @@ const GroupsPage: React.FC = () => {
               <div className="flex items-center space-x-3">
                 <div className="relative" ref={massActionRef}>
                   <button
-                    onClick={() => setMassActionOpen(prev => !prev)}
+                    onClick={() => setMassActionOpen((prev) => !prev)}
                     className="border border-blue-500 text-blue-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-50 flex items-center"
                   >
                     Mass actions <span className="ml-2">▼</span>
                   </button>
                   {massActionOpen && (
                     <div className="absolute top-full right-0 bg-white border border-gray-300 rounded-md shadow-lg mt-1 w-44 z-10">
-                      <button onClick={handleMassDelete} className="w-full px-4 py-2 text-left hover:bg-gray-100">Delete selected</button>
+                      <button onClick={handleMassDelete} className="w-full px-4 py-2 text-left hover:bg-gray-100">
+                        Delete selected
+                      </button>
                     </div>
                   )}
                 </div>
@@ -197,9 +209,9 @@ const GroupsPage: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={selectedGroups.length === filteredGroups.length && filteredGroups.length > 0}
-                          onChange={() => setSelectedGroups(
-                            selectedGroups.length === filteredGroups.length ? [] : filteredGroups.map(g => g.id)
-                          )}
+                          onChange={() =>
+                            setSelectedGroups(selectedGroups.length === filteredGroups.length ? [] : filteredGroups.map((g) => g.id))
+                          }
                           className="w-4 h-4"
                         />
                       </th>
@@ -216,11 +228,11 @@ const GroupsPage: React.FC = () => {
                         className={`${idx % 2 === 0 ? "bg-blue-50" : "bg-white"} hover:bg-gray-100 transition`}
                       >
                         {/* Checkbox */}
-                        <td className="px-6 py-3" onClick={e => e.stopPropagation()}>
+                        <td className="px-6 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={selectedGroups.includes(group.id)}
-                            onChange={e => {
+                            onChange={(e) => {
                               e.stopPropagation();
                               toggleSelectGroup(group.id);
                             }}
@@ -229,35 +241,23 @@ const GroupsPage: React.FC = () => {
                         </td>
 
                         {/* Group Name */}
-                        <td
-                          className="px-6 py-3 cursor-pointer"
-                          onClick={() => navigate(`/groupsmainpage`)}
-                        >
+                        <td className="px-6 py-3 cursor-pointer" onClick={() => navigate(`/groupsmainpage`)}>
                           {group.name}
                         </td>
 
                         {/* Description */}
-                        <td
-                          className="px-6 py-3 cursor-pointer"
-                          onClick={() => navigate(`/groupsmainpage`)}
-                        >
+                        <td className="px-6 py-3 cursor-pointer" onClick={() => navigate(`/groupsmainpage`)}>
                           {group.description || "-"}
                         </td>
 
                         {/* Created on */}
-                        <td
-                          className="px-6 py-3 cursor-pointer"
-                          onClick={() => navigate(`/groupsmainpage/${group.id}`)}
-                        >
+                        <td className="px-6 py-3 cursor-pointer" onClick={() => navigate(`/groupsmainpage/${group.id}`)}>
                           {group.date ? new Date(group.date).toLocaleDateString() : "-"}
                         </td>
 
                         {/* Action Buttons */}
-                        <td className="px-6 py-3 flex items-center space-x-3" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={() => navigate(`/groupsmainpage`)}
-                            className="text-gray-600 hover:text-blue-600"
-                          >
+                        <td className="px-6 py-3 flex items-center space-x-3" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => navigate(`/groupsmainpage`)} className="text-gray-600 hover:text-blue-600">
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
@@ -269,10 +269,7 @@ const GroupsPage: React.FC = () => {
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(group)}
-                            className="text-gray-600 hover:text-red-600"
-                          >
+                          <button onClick={() => handleDelete(group)} className="text-gray-600 hover:text-red-600">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
@@ -303,8 +300,12 @@ const GroupsPage: React.FC = () => {
             </div>
             <p className="mb-6">Are you sure you want to delete "{deleteGroup.name}"?</p>
             <div className="flex justify-end space-x-3">
-              <button onClick={() => setDeleteGroup(null)} className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300">Cancel</button>
-              <button onClick={confirmDelete} className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">Delete</button>
+              <button onClick={() => setDeleteGroup(null)} className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300">
+                Cancel
+              </button>
+              <button onClick={confirmDelete} className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -322,8 +323,12 @@ const GroupsPage: React.FC = () => {
             </div>
             <p className="mb-6">Are you sure you want to delete {selectedGroups.length} selected group(s)?</p>
             <div className="flex justify-end space-x-3">
-              <button onClick={() => setShowMassDeleteModal(false)} className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300">Cancel</button>
-              <button onClick={confirmMassDelete} className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">Delete</button>
+              <button onClick={() => setShowMassDeleteModal(false)} className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300">
+                Cancel
+              </button>
+              <button onClick={confirmMassDelete} className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700">
+                Delete
+              </button>
             </div>
           </div>
         </div>

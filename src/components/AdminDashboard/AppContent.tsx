@@ -43,11 +43,12 @@ import CertificatesPage from "../LearnerDashboard/CertificatesPage";
 import AssignmentsPage from "../LearnerDashboard/AssignmentsPage";
 import TestPage from "../LearnerDashboard/TestsPage";
 import Home from "../LearnerDashboard/Home";
-import CourseCard from "../LearnerDashboard/CourseCard";
+import StudentCourseViewer from "../LearnerDashboard/StudentCourseViewer";
+import Certificate from "../LearnerDashboard/Certificate";
+import AdminCourse from "./AdminCourse";
+import Login from "./Login";
 
-// ------------------------------------
-// Stub Component
-// ------------------------------------
+// Modal Component
 const AddUserType: React.FC<{
   onClose: () => void;
   onSave: (data: { name: string; permissions: string[] }) => void;
@@ -76,9 +77,7 @@ const AddUserType: React.FC<{
   );
 };
 
-// ------------------------------------
-// Main Component
-// ------------------------------------
+// MAIN COMPONENT
 export default function AppContent() {
   const location = useLocation();
 
@@ -87,10 +86,10 @@ export default function AppContent() {
     { name: string; permissions: string[] }[]
   >([]);
 
-  // ⭐ ADDED: userType state for Sidebar/Header
-  const [userType, setUserType] = useState<"admin" | "learner">("learner");
+  // userType state
+  const [userType, setUserType] = useState<"admin" | "learner">("admin");
 
-  // ⭐ ADDED: load userType from localStorage token (uppercase → lowercase)
+  // Load userType from localStorage
   useEffect(() => {
     const stored = localStorage.getItem("token");
     if (!stored) return;
@@ -106,7 +105,6 @@ export default function AppContent() {
 
       if (rawType) {
         const normalized = rawType.toLowerCase();
-
         if (normalized === "admin" || normalized === "learner") {
           setUserType(normalized);
         }
@@ -129,130 +127,143 @@ export default function AppContent() {
     <>
       <Toaster position="top-right" />
 
-      {/* Modal */}
       {isUserTypeModalOpen && (
-        <AddUserType
-          onClose={closeUserTypeModal}
-          onSave={handleSaveUserType}
-        />
+        <AddUserType onClose={closeUserTypeModal} onSave={handleSaveUserType} />
       )}
 
-      {/* If CourseBuilder page → render without Layout */}
-      {isCourseBuilderPage ? (
-        <Routes>
-          <Route path="/coursebuilder" element={<CourseBuilder />} />
-        </Routes>
-      ) : (
+      <Routes>
+        {/* Login — no layout */}
+        <Route path="/login" element={<Login />} />
 
-        // ⭐ PASSED userType to Layout (important!)
-        <Layout userType={userType}>
-          <Routes>
-            {/* Dashboard */}
-            <Route
-              path="/dashboard"
-              element={
-                <div className="space-y-8">
-                  <DashboardStats />
-                  <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-                    <QuickActions />
-                    <div className="space-y-8">
-                      <RecentActivity />
-                    </div>
-                  </div>
+        {/* CourseBuilder — no sidebar, no header */}
+        <Route path="/coursebuilder" element={<CourseBuilder />} />
 
-                  <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
-                    <ReportChart />
-                  </div>
-                </div>
-              }
-            />
+        {/* EVERYTHING ELSE wrapped inside Layout */}
+        <Route
+          path="/*"
+          element={
+            <Layout userType={userType}>
+              <Routes>
+                {userType === "admin" && (
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <div className="space-y-8">
+                        <DashboardStats />
+                        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+                          <QuickActions />
+                          <div className="space-y-8">
+                            <RecentActivity />
+                          </div>
+                        </div>
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+                          <ReportChart />
+                        </div>
+                      </div>
+                    }
+                  />
+                )}
 
-            {/* Users */}
-            <Route path="/users" element={<UserPage />} />
-            <Route path="/userdetails/user/:id" element={<UserDetailsPage />} />
+                {userType === "learner" && (
+                  <Route path="/" element={<Navigate to="/home" replace />} />
+                )}
 
-            {/* Courses */}
-            <Route path="/courses" element={<CourseGrid />} />
-            <Route path="/coursedetails/:id" element={<CourseDetailsPage />} />
-            <Route path="/adduser" element={<AddUser />} />
-            <Route path="/unitoption" element={<UnitOptions />} />
-            <Route path="/Setup" element={<CourseManager />} />
-            <Route path="/view" element={<CourseApp />} />
-            <Route path="/student" element={<CoursePlayer />} />
+                {/* Default redirect */}
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-            {/* Skills */}
-            <Route path="/skills" element={<Skills />} />
-
-            {/* Calendar */}
-            <Route path="/calendar" element={<CalendarDays />} />
-
-            {/* Notifications */}
-            <Route path="/notification" element={<Notification />} />
-
-            {/* Reports */}
-            <Route path="/reports" element={<Reports />}>
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<ReportsLandingPage />} />
-              <Route path="user/:id" element={<UserReport />} />
-              <Route path="courses" element={<CourseReport />} />
-              <Route path="custom" element={<CustomReport />} />
-            </Route>
-
-            {/* Messages */}
-            <Route path="/messages" element={<Messages />} />
-
-            {/* Settings */}
-            <Route
-              path="/settings"
-              element={<Settings onNavigateToAddUserType={openUserTypeModal} />}
-            />
-
-            {/* Groups */}
-            <Route path="/groups" element={<GroupsPage />} />
-            <Route path="/groupsmainpage" element={<GroupsMainPage />} />
-            <Route
-              path="/addgroupform"
-              element={
-                <AddGroupForm
-                  onBack={() => {}}
-                  groups={[]}
-                  setGroups={() => {}}
+                {/* Users */}
+                <Route path="/users" element={<UserPage />} />
+                <Route
+                  path="/userdetails/user/:id"
+                  element={<UserDetailsPage />}
                 />
-              }
-            />
 
-            {/* Workflow */}
-            <Route path="/workflow" element={<WorkflowBuilder />} />
+                {/* Courses */}
+                <Route path="/courses" element={<CourseGrid />} />
+                <Route
+                  path="/coursedetails/:id"
+                  element={<CourseDetailsPage />}
+                />
+                <Route path="/adduser" element={<AddUser />} />
+                <Route path="/unitoption" element={<UnitOptions />} />
+                <Route path="/Setup" element={<CourseManager />} />
+                <Route path="/view" element={<CourseApp />} />
+                <Route path="/student" element={<CoursePlayer />} />
 
-            {/* Help */}
-            <Route path="/help" element={<Help />} />
+                {/* Skills */}
+                <Route path="/skills" element={<Skills />} />
 
-            {/* Media & Tools */}
-            <Route path="/video" element={<VideoPlayer />} />
-            <Route path="/reset" element={<Reset />} />
+                {/* Calendar */}
+                <Route path="/calendar" element={<CalendarDays />} />
 
-            {/* Student & Teacher */}
-            <Route path="/new" element={<StudentApp />} />
-            <Route path="/learner" element={<StudentView />} />
-            <Route path="/teacher" element={<TeacherView />} />
+                {/* Notifications */}
+                <Route path="/notification" element={<Notification />} />
 
-            {/* Admin Course Creator */}
-            <Route path="/admin" element={<AdminCourseCreator />} />
+                {/* Reports */}
+                <Route path="/reports" element={<Reports />}>
+                  <Route path="overview" element={<ReportsLandingPage />} />
+                  <Route path="user/:id" element={<UserReport />} />
+                  <Route path="courses" element={<CourseReport />} />
+                  <Route path="custom" element={<CustomReport />} />
+                </Route>
 
-            {/* Learner Dashboard */}
-            <Route path="/certificates" element={<CertificatesPage />} />
-            <Route path="/assignments" element={<AssignmentsPage />} />
-            <Route path="/home" element={<Home />} />
-            <Route path="/card" element={<CourseCard />} />
-            <Route path="/testpage" element={<TestPage />} />
+                {/* Messages */}
+                <Route path="/messages" element={<Messages />} />
 
-            {/* Default - Catch all */}
-            {/* <Route path="*" element={<Navigate to="/dashboard" replace />} /> */}
-          </Routes>
-        </Layout>
-      )}
+                {/* Settings */}
+                <Route
+                  path="/settings"
+                  element={
+                    <Settings onNavigateToAddUserType={openUserTypeModal} />
+                  }
+                />
+
+                {/* Groups */}
+                <Route path="/groups" element={<GroupsPage />} />
+                <Route path="/groupsmainpage" element={<GroupsMainPage />} />
+                <Route
+                  path="/addgroupform"
+                  element={
+                    <AddGroupForm
+                      onBack={() => {}}
+                      groups={[]}
+                      setGroups={() => {}}
+                    />
+                  }
+                />
+
+                {/* Workflow */}
+                <Route path="/workflow" element={<WorkflowBuilder />} />
+
+                {/* Help */}
+                <Route path="/help" element={<Help />} />
+
+                {/* Tools */}
+                <Route path="/video" element={<VideoPlayer />} />
+                <Route path="/reset" element={<Reset />} />
+
+                {/* Student & Teacher */}
+                <Route path="/new" element={<StudentApp />} />
+                <Route path="/learner" element={<StudentView />} />
+                <Route path="/teacher" element={<TeacherView />} />
+
+                {/* Admin Course Creator */}
+                <Route path="/admin" element={<AdminCourse />} />
+                <Route path="/admincourse" element={<AdminCourseCreator />} />
+
+                {/* Learner Dashboard */}
+                <Route path="/certificates" element={<CertificatesPage />} />
+                <Route path="/assignments" element={<AssignmentsPage />} />
+                <Route path="/home" element={<Home />} />
+                <Route path="/learn" element={<StudentCourseViewer />} />
+                <Route path="/testpage" element={<TestPage />} />
+                <Route path="/certificate" element={<Certificate />} />
+              </Routes>
+            </Layout>
+          }
+        />
+      </Routes>
     </>
   );
 }

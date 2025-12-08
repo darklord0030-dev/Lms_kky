@@ -27,44 +27,49 @@ const UserReport: React.FC = () => {
   const location = useLocation();
   const [user, setUser] = useState<User | null>(location.state?.user || null);
 
+  const [stats, setStats] = useState<any | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   const breadcrumbs: BreadcrumbItem[] = [
-   { label: "Report", href: "/reports"}, 
+    { label: "Report", href: "/reports" },
     { label: "Users", href: "/users" },
-    
   ];
 
-  // Dummy stats (replace with real values)
-  const stats = [
-    { label: "Completion rate", value: "0.0%" },
-    { label: "Completed courses", value: "0" },
-    { label: "Courses in progress", value: "0" },
-    { label: "Courses not passed", value: "0" },
-    { label: "Courses not started", value: "2" },
-    { label: "Training time", value: "0h 0m" },
-  ];
-
-  // Fetch user if not passed via state (direct link or refresh)
+  // 🚀 Fetch user + stats from backend
   useEffect(() => {
-    if (!user && id) {
-      const fetchUser = async () => {
-        // Replace with API call
-        const dummyUser: User = {
-          id,
-          firstName: "John",
-          lastName: "Doe",
-          email: "john@example.com",
-          type: "Learner",
-          lastLogin: "2025-08-01",
-        };
-        setUser(dummyUser);
-      };
-      fetchUser();
-    }
-  }, [id, user]);
+    const fetchData = async () => {
+      try {
+        if (!id) return;
+
+        const userRes = await fetch(`/api/users/${id}`);
+        const statsRes = await fetch(`/api/users/${id}/report`);
+
+        const userData = await userRes.json();
+        const statsData = await statsRes.json();
+
+        setUser({
+          id: userData.id,
+          firstName: userData.firstname,
+          lastName: userData.lastname,
+          email: userData.email,
+          type: userData.type ?? "Learner",
+          lastLogin: userData.lastLogin,
+        });
+
+        setStats(statsData);
+      } catch (error) {
+        console.error("Fetch error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [id]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -77,9 +82,21 @@ const UserReport: React.FC = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Export to Excel
+  // Convert API stats → StatCard format
+  const statCards = stats
+    ? [
+        { label: "Completion rate", value: `${stats.completionRate.toFixed(1)}%` },
+        { label: "Completed courses", value: String(stats.completedCourses) },
+        { label: "Courses in progress", value: String(stats.coursesInProgress) },
+        { label: "Courses not passed", value: String(stats.coursesNotPassed) ?? "0" },
+        { label: "Courses not started", value: String(stats.coursesNotStarted) },
+        { label: "Training time", value: `${stats.trainingTimeHours}h ${stats.trainingTimeMinutes}m` },
+      ]
+    : [];
+
+  // 🟩 Export Excel
   const exportToExcel = () => {
-    if (!user) return;
+    if (!user || !stats) return;
 
     const userData = [
       {
@@ -87,15 +104,15 @@ const UserReport: React.FC = () => {
         Email: user.email,
         Type: user.type,
         LastLogin: user.lastLogin || "-",
-        AssignedCourses: "-",
-        CompletedCourses: "-",
-        Points: "0",
-        Badges: "0",
-        Level: "1",
+        AssignedCourses: stats.assignedCourses?.length ?? 0,
+        CompletedCourses: stats.completedCourses,
+        Points: stats.points ?? 0,
+        Badges: stats.badges ?? 0,
+        Level: stats.level ?? 1,
       },
     ];
 
-    const statsData = stats.map((s) => ({
+    const statsData = statCards.map((s) => ({
       Metric: s.label,
       Value: s.value,
     }));
@@ -109,23 +126,33 @@ const UserReport: React.FC = () => {
     saveAs(blob, `UserReport_${user.firstName}_${user.lastName}.xlsx`);
   };
 
-  // ✅ Export to PDF
+  // 🟩 Export PDF
   const exportToPDF = () => {
-    if (!user) return;
+    if (!user || !stats) return;
 
     const doc = new jsPDF();
     doc.text(`User Report for ${user.firstName} ${user.lastName}`, 14, 20);
 
     (doc as any).autoTable({
       startY: 30,
-      head: [["Name", "Email", "Type", "Last Login", "Assigned Courses", "Completed Courses", "Points", "Badges", "Level"]],
-      body: [[`${user.firstName} ${user.lastName}`, user.email, user.type, user.lastLogin || "-", "-", "-", "0", "0", "1"]],
+      head: [["Name", "Email", "Type", "Last Login", "Assigned", "Completed", "Points", "Badges", "Level"]],
+      body: [[
+        `${user.firstName} ${user.lastName}`,
+        user.email,
+        user.type,
+        user.lastLogin || "-",
+        stats.assignedCourses?.length ?? 0,
+        stats.completedCourses,
+        stats.points ?? 0,
+        stats.badges ?? 0,
+        stats.level ?? 1,
+      ]],
     });
 
     (doc as any).autoTable({
       startY: (doc as any).lastAutoTable.finalY + 10,
       head: [["Metric", "Value"]],
-      body: stats.map((s) => [s.label, s.value]),
+      body: statCards.map((s) => [s.label, s.value]),
     });
 
     doc.save(`UserReport_${user.firstName}_${user.lastName}.pdf`);
@@ -151,14 +178,11 @@ const UserReport: React.FC = () => {
         </nav>
 
         <h1 className="mb-6 text-3xl font-semibold tracking-tight text-zinc-900">
-          User report {user ? `for ${user.firstName} ${user.lastName}` : ""}
+          {loading ? "Loading..." : `User report for ${user?.firstName} ${user?.lastName}`}
         </h1>
-
         {/* Stats Section */}
         <div className="grid grid-cols-1 gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-200 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {stats.map((s) => (
-            <StatCard key={s.label} value={s.value} label={s.label} />
-          ))}
+          {!loading && statCards.map((s) => <StatCard key={s.label} value={s.value} label={s.label} />)}
         </div>
 
         {/* Search + Filter */}
@@ -179,78 +203,73 @@ const UserReport: React.FC = () => {
         </div>
 
         {/* Table */}
-        <div className="mt-4 overflow-hidden rounded-2xl  bg-white shadow-sm">
+        <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm">
           <table className="min-w-full table-fixed">
             <thead>
-              <tr className="border-b border-zinc-200 hover hover:zinc-50/60 text-left text-sm text-zinc-600">
+              <tr className="border-b text-left text-sm text-zinc-600">
                 <th className="px-6 py-4 font-medium">User</th>
                 <th className="px-6 py-4 font-medium">User type</th>
                 <th className="px-6 py-4 font-medium">Last login</th>
                 <th className="px-6 py-4 font-medium flex items-center gap-2">
-                  <span>Assigned courses</span>
-                  <ChevronUp className="h-4 w-4" />
+                  Assigned courses <ChevronUp className="h-4 w-4" />
                 </th>
                 <th className="px-6 py-4 font-medium">Completed courses</th>
                 <th className="px-6 py-4 font-medium">Points</th>
                 <th className="px-6 py-4 font-medium">Badges</th>
                 <th className="px-6 py-4 font-medium">Level</th>
-                <th className="w-16 px-6 py-4 text-right font-medium"></th>
+                <th className="w-16 px-6 py-4"></th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-zinc-100 text-sm">
-              {user ? (
+              {user && stats ? (
                 <tr className="bg-blue-50">
-                  <td className="px-6 py-4 text-zinc-900">{user.firstName} {user.lastName}</td>
-                  <td className="px-6 py-4 text-zinc-600">{user.type}</td>
-                  <td className="px-6 py-4 text-zinc-600">{user.lastLogin || "-"}</td>
-                  <td className="px-6 py-4 text-zinc-600">-</td>
-                  <td className="px-6 py-4 text-zinc-600">-</td>
-                  <td className="px-6 py-4 text-zinc-600">0</td>
-                  <td className="px-6 py-4 text-zinc-600">0</td>
-                  <td className="px-6 py-4 text-zinc-600">1</td>
+                  <td className="px-6 py-4">{user.firstName} {user.lastName}</td>
+                  <td className="px-6 py-4">{user.type}</td>
+                  <td className="px-6 py-4">{user.lastLogin || "-"}</td>
+                  <td className="px-6 py-4">{stats.assignedCourses?.length ?? "-"}</td>
+                  <td className="px-6 py-4">{stats.completedCourses}</td>
+                  <td className="px-6 py-4">{stats.points ?? 0}</td>
+                  <td className="px-6 py-4">{stats.badges ?? 0}</td>
+                  <td className="px-6 py-4">{stats.level ?? 1}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end">
-                      <button 
-                      onClick={() => navigate('/reports/learning')}
-                      className="inline-flex items-center justify-center rounded-full p-2 hover:bg-blue-100">
+                      <button
+                        onClick={() => navigate(`/reports/learning/${id}`)}
+                        className="rounded-full p-2 hover:bg-blue-100"
+                      >
                         <Eye className="h-5 w-5 text-zinc-700" />
                       </button>
                     </div>
                   </td>
                 </tr>
               ) : (
-                <tr>
-                  <td colSpan={10} className="px-6 py-6 text-center text-zinc-500">
-                    No user data found
-                  </td>
-                </tr>
+                <tr><td colSpan={10} className="px-6 py-6 text-center text-zinc-500">Loading...</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Floating Download Dropdown */}
+      {/* Floating Download Buttons */}
       <div className="fixed bottom-6 left-6" ref={dropdownRef}>
         <div className="relative">
           <button
             onClick={() => setOpen((prev) => !prev)}
-            className="inline-flex items-center justify-center rounded-full border border-zinc-200 bg-white p-3 shadow-sm hover:bg-zinc-50"
+            className="rounded-full border bg-white p-3 shadow-sm"
           >
             <Download className="h-5 w-5 text-zinc-800" />
           </button>
+
           {open && (
-            <div className="absolute left-0 mt-2 w-44 rounded-lg border border-zinc-200 bg-white shadow-lg">
-              <button
-                onClick={() => { exportToExcel(); setOpen(false); }}
-                className="w-full px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100"
-              >
+            <div className="absolute left-0 mt-2 w-44 rounded-lg border bg-white shadow-lg">
+              <button onClick={() => { exportToExcel(); setOpen(false); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-100">
                 Download Excel
               </button>
-              <button
-                onClick={() => { exportToPDF(); setOpen(false); }}
-                className="w-full px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100"
-              >
+
+              <button onClick={() => { exportToPDF(); setOpen(false); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-100">
                 Download PDF
               </button>
             </div>

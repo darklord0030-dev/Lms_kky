@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, DragEvent, ChangeEvent } from 'react';
 import {
   Search,
   Filter,
@@ -71,25 +71,31 @@ interface GroupInfo {
 const SlideOutPanel = ({ isOpen, onClose, title, children }: SlideOutPanelProps) => {
   const [show, setShow] = useState(isOpen);
 
+  // Sync internal 'show' state with incoming prop to allow animations,
+  // but use isOpen when controlling visibility classes so the overlay/panel
+  // truly hides from layout when closed.
   useEffect(() => {
-    if (isOpen) setShow(true);
+    setShow(isOpen);
   }, [isOpen]);
 
   const handleClose = () => {
+    // animate out
     setShow(false);
+    // call parent's onClose after animation finishes
     setTimeout(onClose, 300);
   };
 
+  // keep mounted while animating out
   if (!isOpen && !show) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex">
       <div
-        className={`flex-1 bg-black bg-opacity-50 transition-opacity duration-300 ${show ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex-1 bg-black bg-opacity-50 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}
         onClick={handleClose}
       />
       <div
-        className={`w-full max-w-md bg-white shadow-xl h-full flex flex-col transform transition-transform duration-300 ${show ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`w-full max-w-md bg-white shadow-xl h-full flex flex-col transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -115,7 +121,6 @@ export default function GroupsMainPage() {
 
   const [groupName, setGroupName] = useState('Group 1');
   const [groupDescription, setGroupDescription] = useState('');
-  // fixed the broken state destructuring and init from groupName
   const [editGroupName, setEditGroupName] = useState(groupName);
   const [editDescription, setEditDescription] = useState(groupDescription);
 
@@ -142,6 +147,7 @@ export default function GroupsMainPage() {
       try {
         const res = await axios.get('http://localhost:3000/api/usergroup/all');
         const usersArray = res.data || [];
+        console.log('array:', usersArray);
         const usersData: User[] = usersArray.map((u: any) => {
           const userObj = u.user || u;
           const first = (userObj.firstname || '').trim();
@@ -199,11 +205,40 @@ export default function GroupsMainPage() {
   const handleToggleFileShared = (id: string) => setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, shared: !f.shared } : f)));
   const handleRemoveFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id));
 
-  const handleSaveInfo = () => {
+  // UPDATED: save both locally + send to backend using { name, description }
+  const handleSaveInfo = async () => {
+    // optimistic UI update
     setGroupName(editGroupName);
     setGroupDescription(editDescription);
-    setActiveTab('Users');
+
+    // update local group object so header and other references update immediately
+    setGroup((prev) => (prev ? { ...prev, name: editGroupName, description: editDescription } : prev));
+
+    try {
+      // attempt backend update; backend expects { name, description }
+      if (group?.id) {
+        await axios.put(`http://localhost:3000/api/group/${group.id}`, {
+          name: editGroupName,
+          description: editDescription,
+        });
+      } else {
+        // if no group id available, try to infer from selectedGroup
+        if (selectedGroup?.id) {
+          await axios.put(`http://localhost:3000/api/group/${selectedGroup.id}`, {
+            name: editGroupName,
+            description: editDescription,
+          });
+        }
+      }
+      toast.success('Group updated');
+      setActiveTab('Users');
+    } catch (err) {
+      console.error('Failed to update group on server:', err);
+      toast.error('Failed to save group to server — changes kept locally');
+      // we keep optimistic local changes so user sees them; optionally, you might revert here on failure.
+    }
   };
+
   const handleCancelInfo = () => {
     setEditGroupName(groupName);
     setEditDescription(groupDescription);
@@ -211,7 +246,6 @@ export default function GroupsMainPage() {
 
   // allow optional filter param
   const handleFilterSelect = (filter?: string) => {
-    // you can use the 'filter' string if needed to apply filtering logic
     setFilterOpen(false);
   };
 
@@ -281,9 +315,11 @@ export default function GroupsMainPage() {
     const loadGroup = async () => {
       try {
         const storedToken = localStorage.getItem('token');
+
         if (!storedToken) return;
         const parsed = JSON.parse(storedToken);
         const groupIdFromToken = parsed?.data?.groupId || parsed?.groupId;
+        console.log('group: ', groupIdFromToken);
         if (!groupIdFromToken) return;
         const response = await axios.get(`http://localhost:3000/api/group/${groupIdFromToken}`);
         const groupData = response.data || {};
@@ -307,7 +343,7 @@ export default function GroupsMainPage() {
     // empty deps => run once on mount
   }, []);
 
-  const groupname = group?.name?.trim() || 'Guest Group';
+  const groupname = group?.name?.trim() || groupName || 'Guest Group';
 
   return (
     <>
@@ -315,7 +351,7 @@ export default function GroupsMainPage() {
         <div className="max-w-screen mx-auto px-8 py-6">
           <div className="flex items-start justify-between mb-8">
             <div>
-              <button className="text-blue-500" onClick={() => navigate('/dashboard')}>
+              <button className="text-blue-500" onClick={() => navigate('/groups')}>
                 Groups
               </button>
               <h2 className="text-2xl font-bold text-gray-900">{groupname}</h2>

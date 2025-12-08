@@ -19,6 +19,8 @@ type HeaderProps = {
   sidebarCollapsed?: boolean;
   toggleSidebar?: () => void;
 };
+ 
+type ViewMode = "signup" | "login" | "view"; 
 
 interface UserInfo {
   firstname?: string;
@@ -214,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
           className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
         >
           <MessageSquareTextIcon className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+          
         </button>
 
         {/* Notifications */}
@@ -223,7 +225,7 @@ export const Header: React.FC<HeaderProps> = ({ sidebarCollapsed, toggleSidebar 
           className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
         >
           <Bell className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+          
         </button>
 
         {/* Divider */}

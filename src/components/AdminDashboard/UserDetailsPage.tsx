@@ -65,26 +65,8 @@ export default function UserDetailsPage() {
   const navigate = useNavigate();
   const tabs: Tab[] = ["Courses", "Groups", "Files", "Info"];
 
-  const [courses, setCourses] = useState<Course[]>([
-    {
-      id: "1",
-      title: "[Edit me] Guide for Learners",
-      code: "001",
-      role: "Learner",
-      enrolled: "1 minute ago",
-      completed: "-",
-      isActive: true,
-    },
-    {
-      id: "2",
-      title: "What is TalentLibrary?",
-      code: "002",
-      role: "Learner",
-      enrolled: "1 hour ago",
-      completed: "-",
-      isActive: true,
-    },
-  ]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -107,6 +89,26 @@ export default function UserDetailsPage() {
   };
   if (id) fetchUser();
 }, [id]);
+
+
+  // ------------------------------------------------------
+  // NEW: Fetch user's courses from backend
+  // ------------------------------------------------------
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        const res = await axios.get(`http://localhost:3000/api/user/${id}/courses`);
+        setCourses(res.data || []);
+      } catch (err) {
+        console.error("Error fetching courses:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (id) fetchCourses();
+  }, [id]);
+
+
 
   // Toggle selection functions
   const toggleSelectCourse = (id: string) => {

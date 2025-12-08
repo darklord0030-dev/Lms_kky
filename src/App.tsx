@@ -60,14 +60,14 @@ import TestPage from "./components/LearnerDashboard/TestsPage";
 import CertificatesPage from "./components/LearnerDashboard/CertificatesPage";
 import AssignmentsPage from "./components/LearnerDashboard/AssignmentsPage";
 import Home from "./components/LearnerDashboard/Home";
-import CourseCard from "./components/LearnerDashboard/CourseCard"
+// import CourseCard from "./components/LearnerDashboard/CourseCard"
 
 
 
 
 // --- Main App ---
 // UserType definition
-type UserType = "admin" | "teacher" | "learner";
+type UserType = "admin" | "super-admin" | "learner";
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -86,4 +86,3 @@ export default function App() {
     </Router>
   );
 }
-3

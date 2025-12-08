@@ -1,4 +1,3 @@
-// AdminCourseCreator.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus,
@@ -22,23 +21,18 @@ import {
   Search,
   ChevronLeft,
   UserPlus,
-  Download,
-  Share2,
 } from "lucide-react";
-import axios from "axios";
-import confetti from "canvas-confetti";
-import emptyIllustration from "../assets/course.png";
 
 /**
- * Single-file admin course editor + preview.
- * - LocalStorage backed
- * - Thumbnail upload (base64)
- * - Video upload (object URL preview)
- * - Publish toggle (list + editor)
- * - Delete (course/chapter/lesson) with confirm
- * - Enrollment drawer with API-backed learner search, avatars, multi-select
- *
- * Enhanced: confetti, XP animation, cinematic completion popup, fireworks (visual only)
+ * Course Management System with Enrollment
+ * 
+ * Mock API endpoints (replace with real backend):
+ * GET    /api/courses - fetch all courses
+ * POST   /api/courses - create course
+ * PUT    /api/courses/:id - update course
+ * DELETE /api/courses/:id - delete course
+ * GET    /api/user/all - fetch all users
+ * POST   /api/enroll - enroll users in course
  */
 
 // ------------------ Types ------------------
@@ -65,163 +59,71 @@ type Course = {
   id: string;
   title: string;
   description?: string;
-  thumbnail?: string; // base64 or external URL
+  thumbnail?: string;
   certificateAvailable?: boolean;
   published?: boolean;
   chapters: Chapter[];
 };
 
 type Learner = {
-  id: string;
+  id: string | number;
   name?: string;
   email: string;
   avatar?: string | null;
 };
 
-// ------------------ LocalStorage helpers ------------------
-const LS_PREFIX = "lms_local_v2";
-function lsKey(key: string) {
-  return `${LS_PREFIX}::${key}`;
-}
-function saveToLS<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(lsKey(key), JSON.stringify(value));
-  } catch (e) {
-    console.warn("Failed to write to localStorage", e);
-  }
-}
-function readFromLS<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(lsKey(key));
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch (e) {
-    console.warn("Failed to read from localStorage", e);
-    return fallback;
-  }
-}
-
-// ------------------ Enrollment Storage ------------------
-function getEnrollments(): Record<string, string[]> {
-  return readFromLS("enrollments", {} as Record<string, string[]>);
-}
-function saveEnrollments(data: Record<string, string[]>) {
-  saveToLS("enrollments", data);
-}
-
-// ------------------ Certificate (SVG -> PNG) ------------------
-function escapeXml(unsafe: string) {
-  return unsafe.replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&apos;";
-      default:
-        return c;
+// ------------------ Mock API Helper ------------------
+const mockApi = {
+  courses: [] as Course[],
+  users: [
+    { id: 1, name: "John Doe", email: "john@example.com", avatar: null },
+    { id: 2, name: "Jane Smith", email: "jane@example.com", avatar: null },
+    { id: 3, name: "Bob Johnson", email: "bob@example.com", avatar: null },
+    { id: 4, name: "Alice Williams", email: "alice@example.com", avatar: null },
+    { id: 5, name: "Charlie Brown", email: "charlie@example.com", avatar: null },
+  ] as Learner[],
+  
+  getCourses: async () => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return [...mockApi.courses];
+  },
+  
+  createCourse: async (data: any) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const course = { ...data, id: data.id || `course-${Date.now()}` };
+    mockApi.courses.push(course);
+    return course;
+  },
+  
+  updateCourse: async (id: string, data: any) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const index = mockApi.courses.findIndex(c => c.id === id);
+    if (index >= 0) {
+      mockApi.courses[index] = { ...mockApi.courses[index], ...data };
+      return mockApi.courses[index];
     }
-  });
-}
-
-function buildCertificateSVG(courseTitle: string, learnerName: string, issueDate: string) {
-  const svg = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">
-    <defs>
-      <linearGradient id="g" x1="0" x2="1">
-        <stop offset="0" stop-color="#0ea5a4"/>
-        <stop offset="1" stop-color="#60a5fa"/>
-      </linearGradient>
-      <style>
-        .title { font: 700 42px/1.1 'Segoe UI', system-ui, Arial; fill: #0f172a; }
-        .sub { font: 400 20px/1.2 'Segoe UI', system-ui, Arial; fill: #334155; }
-        .name { font: 700 36px 'Segoe UI', system-ui, Arial; fill: #0b1220; }
-        .meta { font: 400 18px 'Segoe UI', system-ui, Arial; fill: #475569; }
-      </style>
-    </defs>
-
-    <rect width="100%" height="100%" fill="#fff" rx="20" ry="20" />
-    <rect x="40" y="40" width="1120" height="770" fill="url(#g)" rx="14" ry="14" opacity="0.08" />
-    
-    <g transform="translate(80,120)">
-      <text class="sub" x="0" y="0">Certificate of Completion</text>
-      <text class="title" x="0" y="50">${escapeXml(courseTitle)}</text>
-
-      <g transform="translate(0,140)">
-        <text class="sub" x="0" y="0">This is to certify that</text>
-        <text class="name" x="0" y="60">${escapeXml(learnerName)}</text>
-        <text class="meta" x="0" y="110">has successfully completed the course</text>
-        <text class="sub" x="0" y="150">${escapeXml(courseTitle)}</text>
-
-        <g transform="translate(0,210)">
-          <rect x="0" y="0" width="420" height="1" fill="#cbd5e1" />
-          <text class="meta" x="0" y="36">Issued on: ${escapeXml(issueDate)}</text>
-        </g>
-      </g>
-    </g>
-
-    <g transform="translate(880,620)">
-      <rect x="0" y="0" width="240" height="80" rx="8" ry="8" fill="#0ea5a4" opacity="0.12"/>
-      <text x="120" y="46" font-family="Segoe UI, Arial" font-weight="700" font-size="18" fill="#0b1220" text-anchor="middle">Gold Seal</text>
-    </g>
-  </svg>
-  `;
-  return svg;
-}
-
-const fireConfetti = (opts?: confetti.Options) => {
-  confetti({
-    particleCount: 120,
-    spread: 80,
-    origin: { y: 0.7 },
-    ...opts,
-  });
+    throw new Error("Course not found");
+  },
+  
+  deleteCourse: async (id: string) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    mockApi.courses = mockApi.courses.filter(c => c.id !== id);
+    return { success: true };
+  },
+  
+  getUsers: async () => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return [...mockApi.users];
+  },
+  
+  enrollUsers: async (courseId: string, learners: any[]) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    console.log(`Enrolled ${learners.length} users to course ${courseId}`);
+    return { success: true, enrolled: learners.length };
+  }
 };
 
-async function downloadCertificateAsPng(courseTitle: string, learnerName: string, issueDate: string, fileName = "certificate.png") {
-  // visual celebration when downloading
-  fireConfetti();
-  const svg = buildCertificateSVG(courseTitle, learnerName, issueDate);
-  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(svgBlob);
-
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.src = url;
-
-  await new Promise<void>((res, rej) => {
-    img.onload = () => res();
-    img.onerror = (e) => rej(e);
-  });
-
-  const canvas = document.createElement("canvas");
-  canvas.width = 1200;
-  canvas.height = 850;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }, "image/png");
-}
-
-// ------------------ StudentPreview component ------------------
+// ------------------ StudentPreview Component ------------------
 function StudentPreview({ courses }: { courses: Course[] }) {
   const [selectedCourseId, setSelectedCourseId] = useState<string>(courses[0]?.id ?? "");
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(() => {
@@ -233,61 +135,17 @@ function StudentPreview({ courses }: { courses: Course[] }) {
   const [showCertificate, setShowCertificate] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // UI states
-  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
-  const [showBadgePopup, setShowBadgePopup] = useState<{ name: string; key: number } | null>(null);
-
-  // XP animation state (floating bubble)
-  const [xpAnim, setXpAnim] = useState<null | { amount: number; key: number }>(null);
-  // animated XP counter (number increment effect)
-  const [animatedXp, setAnimatedXp] = useState<number | null>(null);
-
-  const triggerXpAnimation = (amount: number) => {
-    setXpAnim({ amount, key: Date.now() });
-    // animate XP counter increment
-    setAnimatedXp((prev) => {
-      const base = prev ?? 0;
-      const target = base + amount;
-      // smooth increment over 700ms
-      const steps = 30;
-      const stepVal = (target - base) / steps;
-      let i = 0;
-      const interval = setInterval(() => {
-        i++;
-        setAnimatedXp((cur) => (cur === null ? Math.round(stepVal) : Math.round((cur as number) + stepVal)));
-        if (i >= steps) {
-          clearInterval(interval);
-          setAnimatedXp(target);
-        }
-      }, 700 / steps);
-      return base + amount; // final will be set by interval; initial fallback ok
-    });
-    setTimeout(() => setXpAnim(null), 1200);
-  };
-
-  const triggerBadgePopup = (name: string) => {
-    setShowBadgePopup({ name, key: Date.now() });
-    setTimeout(() => setShowBadgePopup(null), 2400);
-  };
-
-  const [progressMap, setProgressMap] = useState<Record<string, { completed: boolean; completedAt?: string }>>(
-    () => readFromLS("progress", {} as Record<string, { completed: boolean; completedAt?: string }>)
-  );
-  const [xpMap, setXpMap] = useState<Record<string, number>>(() => readFromLS("xp", {} as Record<string, number>));
-  const [badgesMap, setBadgesMap] = useState<Record<string, string[]>>(() => readFromLS("badges", {} as Record<string, string[]>));
+  const [progressMap, setProgressMap] = useState<Record<string, { completed: boolean; completedAt?: string }>>({});
+  const [xpMap, setXpMap] = useState<Record<string, number>>({});
+  const [badgesMap, setBadgesMap] = useState<Record<string, string[]>>({});
   const [quizState, setQuizState] = useState<Record<string, { answeredIndex: number | null; correct?: boolean }>>({});
-
-  useEffect(() => saveToLS("progress", progressMap), [progressMap]);
-  useEffect(() => saveToLS("xp", xpMap), [xpMap]);
-  useEffect(() => saveToLS("badges", badgesMap), [badgesMap]);
 
   const selectedCourse = useMemo(() => courses.find((c) => c.id === selectedCourseId) ?? courses[0] ?? null, [
     courses,
     selectedCourseId,
   ]);
+  
   if (!selectedCourse) return <div className="p-8 text-center text-slate-400">No courses available</div>;
-
-  const displayedXp = animatedXp ?? xpMap[selectedCourse.id] ?? 0;
 
   const allLessons = useMemo(() => selectedCourse.chapters.flatMap((ch) => ch.lessons), [selectedCourse]);
   const selectedLesson = useMemo(
@@ -309,55 +167,25 @@ function StudentPreview({ courses }: { courses: Course[] }) {
   const coursePercent = Math.round((completedCount / Math.max(1, totalLessons)) * 100);
 
   const grantXp = (courseId: string, xp = 10) => {
-    setXpMap((prev) => {
-      const next = { ...prev, [courseId]: (prev[courseId] || 0) + xp };
-      return next;
-    });
+    setXpMap((prev) => ({ ...prev, [courseId]: (prev[courseId] || 0) + xp }));
   };
 
   const awardBadge = (courseId: string, badgeName: string) => {
     setBadgesMap((prev) => {
       const list = prev[courseId] || [];
       if (list.includes(badgeName)) return prev;
-      const next = { ...prev, [courseId]: [...list, badgeName] };
-      // trigger popup
-      triggerBadgePopup(badgeName);
-      return next;
+      return { ...prev, [courseId]: [...list, badgeName] };
     });
   };
 
   const markComplete = (lessonId: string) => {
-    const alreadyCompleted = !!progressMap[lessonId]?.completed;
-
-    // TOGGLE OFF → mark incomplete
-    if (alreadyCompleted) {
-      setProgressMap((prev) => {
-        const updated = { ...prev, [lessonId]: { completed: false } };
-        return updated;
-      });
-      return; // stop here — no XP, no badges, no confetti
-    }
-
-    // TOGGLE ON → mark complete
-    setProgressMap((prev) => ({
-      ...prev,
-      [lessonId]: { completed: true, completedAt: new Date().toISOString() },
-    }));
-
-    // XP and animation
+    if (progressMap[lessonId]?.completed) return;
+    setProgressMap((prev) => ({ ...prev, [lessonId]: { completed: true, completedAt: new Date().toISOString() } }));
     grantXp(selectedCourse.id, 15);
-    triggerXpAnimation(15);
-
-    // Check for course completion
     const newCompletedCount = completedCount + 1;
-
     if (newCompletedCount === totalLessons) {
-      awardBadge(selectedCourse.id, "Course Completed");
+      awardBadge(selectedCourse.id, "Course Completed — Gold Seal");
       grantXp(selectedCourse.id, 100);
-      triggerXpAnimation(100);
-      setShowCertificate(true);
-      fireConfetti();
-      setShowCompletionPopup(true);
     }
   };
 
@@ -368,21 +196,6 @@ function StudentPreview({ courses }: { courses: Course[] }) {
       setSelectedLessonId(flat[idx + 1].id);
     }
   };
-
-  // Autoplay behavior: attempt to autoplay (muted) when lesson changes
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const tryPlay = async () => {
-      try {
-        video.muted = true;
-        await video.play();
-      } catch (e) {
-        // ignore autoplay failures
-      }
-    };
-    tryPlay();
-  }, [selectedLesson?.videoUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -407,8 +220,7 @@ function StudentPreview({ courses }: { courses: Course[] }) {
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("ended", onEnded);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLesson, videoRef.current, progressMap]);
+  }, [selectedLesson, progressMap]);
 
   const submitQuiz = (quizId: string, selectedIndex: number, lessonQuiz: Lesson["quiz"]) => {
     const correct = lessonQuiz ? selectedIndex === lessonQuiz.answerIndex : false;
@@ -416,113 +228,11 @@ function StudentPreview({ courses }: { courses: Course[] }) {
     if (correct) {
       grantXp(selectedCourse.id, 25);
       awardBadge(selectedCourse.id, "Quiz Master");
-      triggerXpAnimation(25);
-      fireConfetti();
     }
-  };
-
-  const learnerName = "Student Name"; // replace with real user name if available
-
-  const issueDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-
-  const handleDownload = async () => {
-    try {
-      await downloadCertificateAsPng(selectedCourse.title, learnerName, issueDate, `${selectedCourse.title}-certificate.png`);
-    } catch (e) {
-      console.error("Download failed", e);
-      const svg = buildCertificateSVG(selectedCourse.title, learnerName, issueDate);
-      const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${selectedCourse.title}-certificate.svg`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    }
-  };
-
-  const handleShare = () => {
-    if ((navigator as any).share) {
-      (navigator as any).share({
-        title: `${selectedCourse.title} - Certificate`,
-        text: `I completed ${selectedCourse.title}!`,
-      }).catch(() => {
-        alert("Share cancelled or not supported.");
-      });
-      return;
-    }
-    alert("Sharing not supported in this browser. You can download the certificate instead.");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 relative">
-      {/* XP floating bubble */}
-      {xpAnim && (
-        <div
-          key={xpAnim.key}
-          className="absolute left-1/2 top-28 transform -translate-x-1/2 text-4xl font-extrabold text-amber-300 animate-xp-pop z-[9999] pointer-events-none"
-        >
-          +{xpAnim.amount} XP
-        </div>
-      )}
-
-      {/* Badge popup */}
-      {showBadgePopup && (
-        <div className="fixed left-4 top-24 z-[9998]">
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-lg shadow-lg animate-scaleIn">
-            <div className="text-sm font-semibold">Badge Unlocked</div>
-            <div className="text-lg font-bold">{showBadgePopup.name}</div>
-          </div>
-        </div>
-      )}
-
-      {/* Completion cinematic popup */}
-      {showCompletionPopup && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-md bg-black/60 animate-fadeIn">
-          {/* fireworks visual (pure CSS circles) */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="w-full h-full overflow-hidden">
-              <div className="absolute left-1/3 top-24 w-64 h-64 rounded-full opacity-10 bg-gradient-to-br from-purple-400 to-pink-400 animate-pulse-slow" />
-              <div className="absolute right-1/3 top-32 w-56 h-56 rounded-full opacity-8 bg-gradient-to-br from-yellow-400 to-amber-400 animate-pulse-slow" />
-            </div>
-          </div>
-
-          <div className="bg-white/6 border border-white/20 rounded-2xl p-12 text-center shadow-2xl animate-scaleIn z-[10000]">
-            <div className="text-amber-300 mb-6 animate-trophyBounce">
-              <svg width="140" height="140" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17 3H7V5H4V6C4 8.76 6.24 11 9 11C9.28 11 9.55 10.97 9.82 10.91C10.74 11.28 11.75 11.5 12.88 11.5C14 11.5 15.03 11.28 15.95 10.92C16.23 10.97 16.5 11 16.78 11C19.54 11 21.78 8.76 21.78 6V5H18V3H17ZM6.05 7C6.02 6.67 6 6.34 6 6H7V7C7 7.35 7.05 7.69 7.14 8.02C6.4 7.79 6.05 7.43 6.05 7ZM18 6H19.78C19.78 6.34 19.76 6.67 19.73 7C19.63 7.43 19.28 7.79 18.54 8.02C18.63 7.69 18.68 7.35 18.68 7V6ZM12 13C10.56 13 9.21 12.68 8 12.1V15H16V12.1C14.79 12.68 13.44 13 12 13ZM8 17V19H16V17H8Z"/>
-              </svg>
-            </div>
-
-            <h1 className="text-4xl font-extrabold text-white mb-4">Congratulations!</h1>
-            <p className="text-lg text-slate-300 mb-6">You have successfully completed the course.</p>
-
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={() => {
-                  setShowCompletionPopup(false);
-                }}
-                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-lg transition"
-              >
-                Continue
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowCompletionPopup(false);
-                  setShowCertificate(true);
-                }}
-                className="px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/5 transition"
-              >
-                View Certificate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100">
       <div className="sticky top-0 bg-slate-900/60 backdrop-blur-sm border-b border-slate-700 z-40">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -541,7 +251,7 @@ function StudentPreview({ courses }: { courses: Course[] }) {
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-300">
             <div className="flex items-center gap-2"><Clock /> <span>{completedCount} / {totalLessons} done</span></div>
-            <div className="flex items-center gap-2"><Award /> <span>{displayedXp} XP</span></div>
+            <div className="flex items-center gap-2"><Award /> <span>{xpMap[selectedCourse.id] || 0} XP</span></div>
           </div>
         </div>
       </div>
@@ -555,11 +265,9 @@ function StudentPreview({ courses }: { courses: Course[] }) {
                   <div className="text-xs text-slate-400">Course Outline</div>
                   <div className="font-semibold truncate">{selectedCourse.title}</div>
                 </div>
-                {selectedCourse.certificateAvailable && (
-                  <button onClick={() => setShowCertificate(true)} title="Certificate" className="p-2 rounded-md hover:bg-slate-700">
-                    <FileText />
-                  </button>
-                )}
+                <button onClick={() => setShowCertificate(true)} title="Certificate" className="p-2 rounded-md hover:bg-slate-700">
+                  <FileText />
+                </button>
               </div>
 
               <div className="mb-3 relative">
@@ -614,21 +322,35 @@ function StudentPreview({ courses }: { courses: Course[] }) {
           )}
         </aside>
 
-        <main className="flex-1 relative">
-          {!showCompletionPopup && !showCertificate && (
+        <main className="flex-1">
+          {showCertificate ? (
+            <div className="w-full h-[70vh] bg-slate-800/60 rounded-xl p-8 flex flex-col items-center justify-center">
+              <div className="w-full max-w-4xl bg-white rounded-xl p-8 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">Certificate of Completion</div>
+                    <div className="text-sm text-gray-500 mt-2">Awarded to</div>
+                    <div className="text-3xl font-extrabold mt-4">Student Name</div>
+                    <div className="mt-3 text-gray-600">For successfully completing the course</div>
+                    <div className="font-semibold text-gray-900 mt-1">{selectedCourse.title}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="px-4 py-2 bg-gradient-to-br from-amber-400 to-amber-500 rounded-md font-bold text-black">Gold • Tech</div>
+                    <div className="text-xs text-slate-400 mt-4">Issued: {new Date().toLocaleDateString()}</div>
+                  </div>
+                </div>
+                <div className="mt-8 border-t pt-6 flex items-center justify-between">
+                  <div className="text-sm text-slate-600">XP: {xpMap[selectedCourse.id] || 0}</div>
+                  <div className="text-sm text-slate-600">Badges: {(badgesMap[selectedCourse.id] || []).join(", ") || "—"}</div>
+                </div>
+              </div>
+              <button onClick={() => setShowCertificate(false)} className="mt-6 text-sm text-slate-300 hover:text-white">Close</button>
+            </div>
+          ) : (
             <div className="space-y-6">
               <div className="bg-black rounded-xl overflow-hidden">
                 {selectedLesson?.videoUrl ? (
-                  // autoplay muted playsInline
-                  <video
-                    ref={videoRef}
-                    src={selectedLesson.videoUrl}
-                    controls
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full aspect-video bg-black"
-                  />
+                  <video ref={videoRef} src={selectedLesson.videoUrl} controls className="w-full aspect-video bg-black" />
                 ) : (
                   <div className="aspect-video bg-slate-900 flex items-center justify-center text-slate-400">No video</div>
                 )}
@@ -640,14 +362,9 @@ function StudentPreview({ courses }: { courses: Course[] }) {
                     <h2 className="text-2xl font-bold">{selectedLesson?.title ?? "Select a lesson"}</h2>
                     <div className="text-sm text-slate-400 mt-1">{selectedCourse.title} • {selectedLesson?.duration ?? "-"}</div>
                   </div>
-                  <button
-                    onClick={() => selectedLesson && markComplete(selectedLesson.id)}
-                    className={`px-4 py-2 rounded-md font-semibold ${lessonCompleted(selectedLesson?.id) ? "bg-slate-600 text-white" : "bg-emerald-500 text-slate-900"}`}
-                  >
-                    {lessonCompleted(selectedLesson?.id) ? "Completed" : "Mark Complete"}
-                  </button>
+                  <button onClick={() => selectedLesson && markComplete(selectedLesson.id)} className="px-4 py-2 rounded-md bg-emerald-500 text-slate-900 font-semibold">Mark Complete</button>
                 </div>
-                <div className="prose prose-invert" dangerouslySetInnerHTML={{ __html: selectedLesson?.content ?? "<p>No content</p>" }} />
+                <div className="prose prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: selectedLesson?.content ?? "<p>No content</p>" }} />
 
                 {selectedLesson?.quiz && (
                   <div className="mt-6 bg-slate-800/40 p-4 rounded-md border border-slate-700">
@@ -671,64 +388,16 @@ function StudentPreview({ courses }: { courses: Course[] }) {
               </div>
             </div>
           )}
-
-          {showCertificate && (
-            <div className="space-y-6">
-              {completedCount === totalLessons ? (
-                <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                  <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 text-white text-center">
-                    <Award size={48} className="mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Certificate of Completion</h3>
-                    <p className="text-sm opacity-90">{selectedCourse.title}</p>
-                  </div>
-                  <div className="p-6">
-                    <div className="mb-4">
-                      <div className="text-sm text-gray-500 mb-1">Issued to</div>
-                      <div className="font-medium mb-1">{learnerName}</div>
-                      <div className="text-sm text-gray-500 mb-1">Issued on</div>
-                      <div className="font-medium">
-                        {issueDate}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleDownload}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <Download size={16} />
-                        Download
-                      </button>
-
-                      <button
-                        onClick={handleShare}
-                        className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        <Share2 size={16} />
-                        Share
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-lg shadow-sm p-6 text-center">
-                  <Award size={64} className="mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">No Certificates Yet</h3>
-                  <p className="text-gray-500">Complete all lessons to earn a certificate of completion.</p>
-                </div>
-              )}
-            </div>
-          )}
         </main>
       </div>
     </div>
   );
 }
 
-// ------------------ Admin Panel (main) ------------------
-export default function AdminCourseCreator() {
+// ------------------ Main Admin Component ------------------
+export default function AdminCourse() {
   const [view, setView] = useState<"list" | "edit" | "preview">("list");
-  const [courses, setCourses] = useState<Course[]>(() => readFromLS("courses", [] as Course[]));
+  const [courses, setCourses] = useState<Course[]>([]);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -739,29 +408,33 @@ export default function AdminCourseCreator() {
   // Enrollment Drawer State
   const [showEnrollDrawer, setShowEnrollDrawer] = useState(false);
   const [enrollTargetCourse, setEnrollTargetCourse] = useState<Course | null>(null);
-
-  // Search + learners state (API/Axios)
   const [learners, setLearners] = useState<Learner[]>([]);
   const [learnersLoading, setLearnersLoading] = useState(false);
   const [learnersError, setLearnersError] = useState<string | null>(null);
-
-  // input/search + selection
-  const [enrollInput, setEnrollInput] = useState(""); // typed text (email or name)
+  const [enrollInput, setEnrollInput] = useState("");
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
-
   const [selectedLearners, setSelectedLearners] = useState<Learner[]>([]);
 
-  // persist courses
   useEffect(() => {
-    saveToLS("courses", courses);
-  }, [courses]);
+    fetchCourses();
+  }, []);
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
     setNotification({ message: msg, type });
     setTimeout(() => setNotification(null), 3000);
   };
 
-  // create new course
+  async function fetchCourses() {
+    try {
+      const data = await mockApi.getCourses();
+      setCourses(data || []);
+    } catch (err) {
+      console.error("Failed to load courses", err);
+      setCourses([]);
+      notify("Failed to load courses", "error");
+    }
+  }
+
   const createNewCourse = () => {
     const ts = Date.now();
     const newCourse: Course = {
@@ -778,8 +451,8 @@ export default function AdminCourseCreator() {
           lessons: [
             {
               id: `l-${ts}`,
-              title: "New Lesson",
-              content: "<p>Lesson content...</p>",
+              title: "Lesson 1",
+              content: "<p>Lesson content goes here...</p>",
               duration: "10:00",
               videoUrl: "",
               quiz: null,
@@ -789,77 +462,108 @@ export default function AdminCourseCreator() {
       ],
     };
     setEditingCourse(newCourse);
+    setExpandedChapters({ [`ch-${ts}`]: true });
     setView("edit");
   };
 
-  // edit existing course - deep copy to avoid accidental mutation
   const editCourse = (course: Course) => {
     setEditingCourse(JSON.parse(JSON.stringify(course)));
     setView("edit");
   };
 
-  // save (create or update) — ensure we switch to list view after saving
-  const saveCourse = () => {
-    if (!editingCourse) return;
-    const exists = courses.some((c) => c.id === editingCourse.id);
-    if (exists) {
-      setCourses((prev) => prev.map((c) => (c.id === editingCourse.id ? editingCourse : c)));
-      notify("Course updated successfully!");
-    } else {
-      setCourses((prev) => [...prev, editingCourse]);
-      notify("Course created successfully!");
-      // celebration when course created
-      fireConfetti();
-    }
-    // ensure view switches to list so the new/updated card is visible
-    setView("list");
-    setEditingCourse(null);
-  };
+  const saveCourse = async () => {
+    try {
+      if (!editingCourse) {
+        notify("No course to save", "error");
+        return;
+      }
 
-  // publish toggle
-  const togglePublish = (courseId: string) => {
-    setCourses((prev) => prev.map((c) => (c.id === courseId ? { ...c, published: !c.published } : c)));
-    if (editingCourse?.id === courseId) {
-      setEditingCourse({ ...editingCourse, published: !editingCourse.published });
-    }
-  };
+      const existsOnServer = courses.some((c) => c.id === editingCourse.id);
 
-  // delete course
-  const deleteCourse = (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this course? This cannot be undone.")) return;
-    setCourses((prev) => prev.filter((c) => c.id !== id));
-    if (editingCourse?.id === id) {
-      setEditingCourse(null);
+      if (!existsOnServer) {
+        await mockApi.createCourse(editingCourse);
+        notify("Course created successfully!", "success");
+      } else {
+        await mockApi.updateCourse(editingCourse.id, editingCourse);
+        notify("Course updated successfully!", "success");
+      }
+
+      await fetchCourses();
       setView("list");
+      setEditingCourse(null);
+    } catch (err: any) {
+      console.error(err);
+      notify("Error saving course", "error");
     }
-    notify("Course deleted");
   };
 
-  // duplicate course
-  const duplicateCourse = (course: Course) => {
+  const togglePublish = async (courseId: string) => {
+    const course = courses.find((c) => c.id === courseId);
+    if (!course) return;
+    try {
+      const updated = { ...course, published: !course.published };
+      await mockApi.updateCourse(courseId, updated);
+      await fetchCourses();
+      notify(updated.published ? "Course published" : "Course unpublished");
+    } catch (err) {
+      console.error("Failed to toggle publish", err);
+      notify("Failed to toggle publish", "error");
+    }
+  };
+
+  const deleteCourse = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this course? This cannot be undone.")) return;
+    try {
+      await mockApi.deleteCourse(id);
+      await fetchCourses();
+      if (editingCourse?.id === id) {
+        setEditingCourse(null);
+        setView("list");
+      }
+      notify("Course deleted");
+    } catch (err) {
+      console.error("Delete failed", err);
+      notify("Failed to delete course", "error");
+    }
+  };
+
+  const duplicateCourse = async (course: Course) => {
     const copy = JSON.parse(JSON.stringify(course)) as Course;
     copy.id = `course-${Date.now()}`;
     copy.title = `${course.title} (Copy)`;
-    setCourses((prev) => [...prev, copy]);
-    notify("Course duplicated");
+    copy.published = false;
+    
+    try {
+      await mockApi.createCourse(copy);
+      await fetchCourses();
+      notify("Course duplicated successfully");
+    } catch (err) {
+      notify("Failed to duplicate course", "error");
+    }
   };
 
-  // editing helpers that auto-sync to saved courses if course already exists
   const syncEditingToCourses = (updated: Course) => {
     setEditingCourse(updated);
-    setCourses((prev) => (prev.some((c) => c.id === updated.id) ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev));
   };
 
   const addChapter = () => {
     if (!editingCourse) return;
-    const newChapter: Chapter = { id: `ch-${Date.now()}`, title: `Chapter ${editingCourse.chapters.length + 1}`, lessons: [] };
+    const newChapter: Chapter = { 
+      id: `ch-${Date.now()}`, 
+      title: `Chapter ${editingCourse.chapters.length + 1}`, 
+      lessons: [] 
+    };
     const updated = { ...editingCourse, chapters: [...editingCourse.chapters, newChapter] };
+    setExpandedChapters(prev => ({ ...prev, [newChapter.id]: true }));
     syncEditingToCourses(updated);
   };
 
   const updateChapter = (chapterId: string, updates: Partial<Chapter>) => {
     if (!editingCourse) return;
-    const updated = { ...editingCourse, chapters: editingCourse.chapters.map((ch) => (ch.id === chapterId ? { ...ch, ...updates } : ch)) };
+    const updated = { 
+      ...editingCourse, 
+      chapters: editingCourse.chapters.map((ch) => (ch.id === chapterId ? { ...ch, ...updates } : ch)) 
+    };
     syncEditingToCourses(updated);
   };
 
@@ -873,8 +577,20 @@ export default function AdminCourseCreator() {
 
   const addLesson = (chapterId: string) => {
     if (!editingCourse) return;
-    const newLesson: Lesson = { id: `l-${Date.now()}`, title: "New Lesson", content: "<p>Lesson content...</p>", duration: "10:00", videoUrl: "", quiz: null };
-    const updated = { ...editingCourse, chapters: editingCourse.chapters.map((ch) => (ch.id === chapterId ? { ...ch, lessons: [...ch.lessons, newLesson] } : ch)) };
+    const newLesson: Lesson = { 
+      id: `l-${Date.now()}`, 
+      title: "New Lesson", 
+      content: "<p>Lesson content goes here...</p>", 
+      duration: "10:00", 
+      videoUrl: "", 
+      quiz: null 
+    };
+    const updated = { 
+      ...editingCourse, 
+      chapters: editingCourse.chapters.map((ch) => 
+        ch.id === chapterId ? { ...ch, lessons: [...ch.lessons, newLesson] } : ch
+      ) 
+    };
     syncEditingToCourses(updated);
   };
 
@@ -894,41 +610,45 @@ export default function AdminCourseCreator() {
     if (!window.confirm("Delete this lesson?")) return;
     const updated = {
       ...editingCourse,
-      chapters: editingCourse.chapters.map((ch) => (ch.id === chapterId ? { ...ch, lessons: ch.lessons.filter((l) => l.id !== lessonId) } : ch)),
+      chapters: editingCourse.chapters.map((ch) => 
+        ch.id === chapterId ? { ...ch, lessons: ch.lessons.filter((l) => l.id !== lessonId) } : ch
+      ),
     };
     syncEditingToCourses(updated);
     notify("Lesson deleted");
   };
 
   const addQuiz = (chapterId: string, lessonId: string) => {
-    const quiz = { id: `q-${Date.now()}`, question: "Question text?", options: ["Option 1", "Option 2", "Option 3", "Option 4"], answerIndex: 0 };
+    const quiz = { 
+      id: `q-${Date.now()}`, 
+      question: "What is the correct answer?", 
+      options: ["Option 1", "Option 2", "Option 3", "Option 4"], 
+      answerIndex: 0 
+    };
     updateLesson(chapterId, lessonId, { quiz });
   };
 
-  const toggleChapter = (chapterId: string) => setExpandedChapters((p) => ({ ...p, [chapterId]: !p[chapterId] }));
+  const toggleChapter = (chapterId: string) => {
+    setExpandedChapters((p) => ({ ...p, [chapterId]: !p[chapterId] }));
+  };
 
-  // -------------- Uploads --------------
-  // Thumbnail: base64 stored in course.thumbnail
   const handleThumbnailUpload = (file: File, targetCourseId?: string) => {
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = String(reader.result || "");
-      if (targetCourseId && editingCourse?.id === targetCourseId) {
+      if (editingCourse && targetCourseId === editingCourse.id) {
         const updated = { ...editingCourse, thumbnail: base64 };
         syncEditingToCourses(updated);
-      } else if (targetCourseId) {
-        setCourses((prev) => prev.map((c) => (c.id === targetCourseId ? { ...c, thumbnail: base64 } : c)));
       }
       notify("Thumbnail uploaded");
     };
     reader.readAsDataURL(file);
   };
 
-  // Video: store object URL in lesson.videoUrl
   const handleVideoUpload = (file: File, chapterId: string, lessonId: string) => {
     const url = URL.createObjectURL(file);
     updateLesson(chapterId, lessonId, { videoUrl: url });
-    notify("Video Uploaded");
+    notify("Video uploaded (preview only)");
   };
 
   const triggerThumbnailInput = (courseId?: string) => {
@@ -941,6 +661,7 @@ export default function AdminCourseCreator() {
     };
     input.click();
   };
+
   const triggerVideoInput = (chapterId: string, lessonId: string) => {
     if (!videoInputRef.current) return;
     const input = videoInputRef.current;
@@ -952,27 +673,25 @@ export default function AdminCourseCreator() {
     input.click();
   };
 
-  // ---------- ENROLLMENT (drawer) ----------
   const openEnrollDrawer = (course: Course) => {
     setEnrollTargetCourse(course);
     setEnrollInput("");
     setSelectedLearners([]);
     setSuggestionsOpen(false);
-    fetchUsers();
     setShowEnrollDrawer(true);
+    fetchLearners();
   };
 
-  const fetchUsers = async () => {
+  const fetchLearners = async () => {
     setLearnersLoading(true);
     setLearnersError(null);
-
     try {
-      const res = await axios.get(`http://localhost:3000/api/user/all`);
-      const data = res.data?.users || res.data || [];
-      setLearners(data);
-    } catch (err) {
+      const data = await mockApi.getUsers();
+      setLearners(data || []);
+    } catch (err: any) {
       console.error("Failed to fetch learners", err);
       setLearnersError("Failed to load learners");
+      setLearners([]);
     } finally {
       setLearnersLoading(false);
     }
@@ -987,14 +706,14 @@ export default function AdminCourseCreator() {
   }, [learners, enrollInput]);
 
   const addLearnerToSelection = (learner: Learner) => {
-    if (selectedLearners.some((s) => s.id === learner.id || s.email === learner.email)) return;
+    if (selectedLearners.some((s) => String(s.id) === String(learner.id) || s.email === learner.email)) return;
     setSelectedLearners((p) => [...p, learner]);
     setEnrollInput("");
     setSuggestionsOpen(false);
   };
 
   const removeSelectedLearner = (idOrEmail: string) => {
-    setSelectedLearners((p) => p.filter((l) => l.id !== idOrEmail && l.email !== idOrEmail));
+    setSelectedLearners((p) => p.filter((l) => String(l.id) !== idOrEmail && l.email !== idOrEmail));
   };
 
   const addAdHocLearner = () => {
@@ -1010,11 +729,10 @@ export default function AdminCourseCreator() {
     addLearnerToSelection(generated);
   };
 
-  const submitEnrollment = () => {
+  const submitEnrollment = async () => {
     if (!enrollTargetCourse) return;
 
-    const enrollments = getEnrollments();
-    const toEnroll = selectedLearners.length > 0 ? selectedLearners : [];
+    const toEnroll: Array<any> = selectedLearners.length > 0 ? [...selectedLearners] : [];
 
     if (toEnroll.length === 0 && enrollInput.trim()) {
       const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(enrollInput.trim());
@@ -1032,19 +750,16 @@ export default function AdminCourseCreator() {
       return;
     }
 
-    toEnroll.forEach((learner) => {
-      const key = learner.id || learner.email;
-      if (!enrollments[key]) enrollments[key] = [];
-      if (!enrollments[key].includes(enrollTargetCourse.id)) {
-        enrollments[key].push(enrollTargetCourse.id);
-      }
-    });
-
-    saveEnrollments(enrollments);
-    notify(`Enrolled ${toEnroll.length} learner(s) to "${enrollTargetCourse.title}"`);
-    setShowEnrollDrawer(false);
-    setEnrollInput("");
-    setSelectedLearners([]);
+    try {
+      await mockApi.enrollUsers(enrollTargetCourse.id, toEnroll);
+      notify(`Enrolled ${toEnroll.length} learner(s) to "${enrollTargetCourse.title}"`);
+      setShowEnrollDrawer(false);
+      setEnrollInput("");
+      setSelectedLearners([]);
+    } catch (err) {
+      console.error("Enrollment failed", err);
+      notify("Failed to enroll learners", "error");
+    }
   };
 
   const handleEnrollInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1052,7 +767,8 @@ export default function AdminCourseCreator() {
       e.preventDefault();
       if (suggestions.length > 0 && enrollInput.trim()) {
         const exact = suggestions.find(
-          (s) => s.email.toLowerCase() === enrollInput.trim().toLowerCase() || (s.name || "").toLowerCase() === enrollInput.trim().toLowerCase()
+          (s) => s.email.toLowerCase() === enrollInput.trim().toLowerCase() || 
+                 (s.name || "").toLowerCase() === enrollInput.trim().toLowerCase()
         );
         if (exact) {
           addLearnerToSelection(exact);
@@ -1067,10 +783,9 @@ export default function AdminCourseCreator() {
   };
 
   // ---------- RENDER ----------
-  // LIST VIEW: placed first so setView("list") shows cards immediately
   if (view === "list") {
     return (
-      <div className="min-h-screen bg-white text-slate-100">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         {notification && (
           <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${notification.type === "success" ? "bg-emerald-500" : "bg-red-500"} text-white font-semibold`}>
             {notification.message}
@@ -1080,40 +795,40 @@ export default function AdminCourseCreator() {
         <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold  text-black mb-2">Course Management</h1>
-              <p className="text-black">Create, edit, and manage your courses</p>
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">Course Management</h1>
+              <p className="text-slate-600">Create, edit, and manage your courses</p>
             </div>
-            <div className="flex items-center gap-4">
-              <button onClick={createNewCourse} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition">
-                <Plus size={20} /> Create New Course
-              </button>
-            </div>
+            <button onClick={createNewCourse} className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition shadow-lg">
+              <Plus size={20} /> Create New Course
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {courses.map((course) => (
-              <div key={course.id} className="bg-white backdrop-blur-sm rounded-xl overflow-hidden border border-slate-700 hover:border-slate-600 transition group">
-                <div className="h-48 bg-grey overflow-hidden relative">
+              <div key={course.id} className="bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-slate-300 hover:shadow-xl transition group">
+                <div className="h-48 bg-slate-100 overflow-hidden relative">
                   {course.thumbnail ? (
-                    <img src={course.thumbnail} alt={course.title} className="w-full h-full border border-black object-cover group-hover:scale-105 transition duration-300" />
+                    <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <BookOpen size={48} className="text-slate-500" />
+                      <BookOpen size={48} className="text-slate-300" />
                     </div>
                   )}
-                  <button onClick={() => triggerThumbnailInput(course.id)} className="absolute top-2 right-2 bg-slate-900/60 px-3 py-1 rounded-md text-sm">Upload</button>
+                  <button onClick={() => triggerThumbnailInput(course.id)} className="absolute top-2 right-2 bg-white/90 hover:bg-white px-3 py-1 rounded-md text-sm text-slate-700 font-medium shadow">
+                    Upload
+                  </button>
                 </div>
                 <div className="p-5">
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold mb-2 flex items-center gap-3 text-black">
+                      <h3 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-3">
                         {course.title}
                         <span className={`text-xs px-2 py-1 rounded-full font-semibold ${course.published ? "bg-emerald-100 text-emerald-700" : "bg-yellow-100 text-yellow-700"}`}>
-                          {course.published ? "Published" : "Unpublished"}
+                          {course.published ? "Published" : "Draft"}
                         </span>
                       </h3>
-                      <p className="text-sm text-black mb-4 line-clamp-2">{course.description}</p>
-                      <div className="flex items-center gap-2 text-xs text-black mb-4">
+                      <p className="text-sm text-slate-600 mb-4 line-clamp-2">{course.description}</p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
                         <span>{course.chapters.length} chapters</span>
                         <span>•</span>
                         <span>{course.chapters.reduce((acc, ch) => acc + ch.lessons.length, 0)} lessons</span>
@@ -1125,31 +840,22 @@ export default function AdminCourseCreator() {
                         )}
                       </div>
                     </div>
-
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="flex ">
-                        <button onClick={() => { setEditingCourse(course); setView("preview"); }} className="px-3 py-2 text-black hover:bg-slate-600 rounded transition flex items-center gap-2">
-                          <Eye size={16} />
-                        </button>
-                      </div>
-                    </div>
                   </div>
 
-                  <div className="flex">
-                    <button onClick={() => editCourse(course)} className="px-2 py-2 text-black hover:bg-slate-600 rounded-lg transition">
-                      <Edit2 size={16} />
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => editCourse(course)} className="flex-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition flex items-center justify-center gap-2">
+                      <Edit2 size={16} /> Edit
                     </button>
-                    <button onClick={() => duplicateCourse(course)} className="px-2 py-2 text-black hover:bg-slate-600 rounded-lg transition">
+                    <button onClick={() => { setEditingCourse(course); setView("preview"); }} className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg transition">
+                      <Eye size={16} />
+                    </button>
+                    <button onClick={() => duplicateCourse(course)} className="px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg transition">
                       <Copy size={16} />
                     </button>
-                    <button onClick={() => deleteCourse(course.id)} className="px-2 py-2 text-black hover:bg-red-700 rounded-lg transition">
+                    <button onClick={() => deleteCourse(course.id)} className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition">
                       <Trash2 size={16} />
                     </button>
-
-                    <button
-                      onClick={() => openEnrollDrawer(course)}
-                      className="px-2 py-2 text-black hover:bg-emerald-700 rounded transition flex items-center gap-2"
-                    >
+                    <button onClick={() => openEnrollDrawer(course)} className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition">
                       <UserPlus size={16} />
                     </button>
                   </div>
@@ -1159,84 +865,49 @@ export default function AdminCourseCreator() {
           </div>
 
           {courses.length === 0 && (
-           <div className="flex flex-col items-center text-center space-y-6 max-w-md mx-auto mt-10">
-        <img
-          src={emptyIllustration}
-          alt="No courses"
-          className="w-80 mb-4"
-        />
-        <h2 className="text-2xl font-semibold text-gray-900 mb-3 text-center">
-          There are no courses yet!
-        </h2>
-        <p className="text-gray-500 mb-8 text-lg text-center">
-          Time to craft a new course.
-        </p>
-              <button onClick={createNewCourse} className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition">
+            <div className="text-center py-20">
+              <BookOpen size={64} className="mx-auto text-slate-300 mb-4" />
+              <h3 className="text-2xl text-slate-900 font-bold mb-2">No courses yet</h3>
+              <p className="text-slate-600 mb-6">Create your first course to get started</p>
+              <button onClick={createNewCourse} className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-600 transition shadow-lg">
                 Create Course
               </button>
             </div>
           )}
 
-          {/* ENROLL DRAWER */}
-          <div
-            className={`fixed inset-0 z-50 transition ${showEnrollDrawer ? "visible" : "invisible"}`}
-          >
-            <div
-              className={`absolute inset-0 bg-black/50 transition-opacity ${showEnrollDrawer ? "opacity-100" : "opacity-0"}`}
-              onClick={() => setShowEnrollDrawer(false)}
-            />
+          {/* ENROLLMENT DRAWER */}
+          <div className={`fixed inset-0 z-50 transition ${showEnrollDrawer ? "visible" : "invisible"}`}>
+            <div className={`absolute inset-0 bg-black/50 transition-opacity ${showEnrollDrawer ? "opacity-100" : "opacity-0"}`} onClick={() => setShowEnrollDrawer(false)} />
 
-            <div
-              className={`absolute top-0 right-0 h-full w-96 bg-white text-black border-l border-gray-300 p-6 shadow-xl transform transition-transform ${showEnrollDrawer ? "translate-x-0" : "translate-x-full"}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between">
+            <div className={`absolute top-0 right-0 h-full w-96 bg-white text-slate-900 border-l border-slate-200 p-6 shadow-xl transform transition-transform ${showEnrollDrawer ? "translate-x-0" : "translate-x-full"}`} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-1 text-gray-800">
-                    Enroll Learners
-                  </h2>
-                  <p className="text-sm text-gray-600">
-                    Course: <strong>{enrollTargetCourse?.title}</strong>
-                  </p>
+                  <h2 className="text-2xl font-bold mb-1 text-slate-900">Enroll Learners</h2>
+                  <p className="text-sm text-slate-600">Course: <strong>{enrollTargetCourse?.title}</strong></p>
                 </div>
-
-                <button onClick={() => setShowEnrollDrawer(false)} className="text-gray-500 hover:text-gray-700">
-                  Close
-                </button>
+                <button onClick={() => setShowEnrollDrawer(false)} className="text-slate-400 hover:text-slate-600">✕</button>
               </div>
 
-              <div className="mt-4">
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Search learners (name or email)</label>
-
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2 text-slate-700">Search learners</label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    value={enrollInput}
-                    onChange={(e) => { setEnrollInput(e.target.value); setSuggestionsOpen(true); }}
-                    onKeyDown={handleEnrollInputKey}
-                    placeholder="Type name or email and press Enter or choose from suggestions"
-                    className="w-full px-4 py-2 bg-white border border-gray-300 rounded text-black focus:outline-none focus:border-emerald-500"
-                  />
+                  <input type="text" value={enrollInput} onChange={(e) => { setEnrollInput(e.target.value); setSuggestionsOpen(true); }} onKeyDown={handleEnrollInputKey} placeholder="Type name or email..." className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-emerald-500" />
 
-                  {suggestionsOpen && enrollInput.trim() !== "" && (
-                    <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-md max-h-60 overflow-auto z-40">
+                  {suggestionsOpen && (enrollInput.trim() !== "" || learners.length > 0) && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-auto z-40">
                       {learnersLoading ? (
-                        <div className="p-3 text-sm text-gray-600">Loading learners...</div>
+                        <div className="p-3 text-sm text-slate-600">Loading...</div>
                       ) : learnersError ? (
-                        <div className="p-3 text-sm text-red-600">Failed to load learners</div>
+                        <div className="p-3 text-sm text-red-600">{learnersError}</div>
                       ) : suggestions.length === 0 ? (
-                        <div className="p-3 text-sm text-gray-600">No matches — press Enter to add</div>
+                        <div className="p-3 text-sm text-slate-600">No matches — press Enter to add</div>
                       ) : (
                         suggestions.map((s) => (
-                          <button
-                            key={s.id || s.email}
-                            onClick={() => addLearnerToSelection(s)}
-                            className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3"
-                          >
-                            <img src={s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || s.email)}&background=ddd`} alt={s.name || s.email} className="w-8 h-8 rounded-full object-cover" />
+                          <button key={String(s.id)} onClick={() => addLearnerToSelection(s)} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-3">
+                            <img src={s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || s.email)}&background=random`} alt={s.name || s.email} className="w-8 h-8 rounded-full object-cover" />
                             <div className="flex-1">
-                              <div className="text-sm font-semibold text-gray-800">{s.name || s.email}</div>
-                              <div className="text-xs text-gray-500">{s.email}</div>
+                              <div className="text-sm font-semibold text-slate-900">{s.name || s.email}</div>
+                              <div className="text-xs text-slate-500">{s.email}</div>
                             </div>
                           </button>
                         ))
@@ -1244,86 +915,52 @@ export default function AdminCourseCreator() {
                     </div>
                   )}
                 </div>
+              </div>
 
-                {suggestionsOpen && enrollInput.trim() === "" && (
-                  <div className="mt-2 bg-white border border-gray-200 rounded shadow-md max-h-60 overflow-auto z-40">
-                    {learnersLoading ? (
-                      <div className="p-3 text-sm text-gray-600">Loading learners...</div>
-                    ) : learnersError ? (
-                      <div className="p-3 text-sm text-red-600">Failed to load learners</div>
-                    ) : learners.slice(0, 8).map((s) => (
-                      <button
-                        key={s.id || s.email}
-                        onClick={() => addLearnerToSelection(s)}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-3"
-                      >
-                        <img src={s.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || s.email)}&background=ddd`} alt={s.name || s.email} className="w-8 h-8 rounded-full object-cover" />
-                        <div className="flex-1">
-                          <div className="text-sm font-semibold text-gray-800">{s.name || s.email}</div>
-                          <div className="text-xs text-gray-500">{s.email}</div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mb-4">
+                <label className="block text-sm font-semibold mb-2 text-slate-700">Selected learners</label>
+                <div className="flex flex-wrap gap-2 min-h-[60px] p-3 bg-slate-50 rounded-lg border border-slate-200">
                   {selectedLearners.length === 0 ? (
-                    <div className="text-sm text-gray-500">No learners selected yet</div>
+                    <div className="text-sm text-slate-400">No learners selected yet</div>
                   ) : (
                     selectedLearners.map((l) => (
-                      <div key={l.id || l.email} className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
-                        <img src={l.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(l.name || l.email)}&background=ddd`} alt={l.name || l.email} className="w-6 h-6 rounded-full object-cover" />
-                        <div className="text-sm text-gray-700">{l.name || l.email}</div>
-                        <button onClick={() => removeSelectedLearner(l.id || l.email)} className="ml-2 text-gray-400 hover:text-gray-600">✕</button>
+                      <div key={String(l.id)} className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                        <img src={l.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(l.name || l.email)}&background=random`} alt={l.name || l.email} className="w-6 h-6 rounded-full object-cover" />
+                        <div className="text-sm text-slate-700">{l.name || l.email}</div>
+                        <button onClick={() => removeSelectedLearner(String(l.id))} className="ml-1 text-slate-400 hover:text-slate-600">✕</button>
                       </div>
                     ))
                   )}
                 </div>
-
-                <div className="mt-4 flex items-center gap-2">
-                  <button
-                    onClick={() => { addAdHocLearner(); setSuggestionsOpen(false); }}
-                    className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-gray-800"
-                  >
-                    Add Typed
-                  </button>
-
-                  <div className="flex-1" />
-
-                  <button
-                    onClick={() => { setSelectedLearners([]); setEnrollInput(""); setSuggestionsOpen(false); }}
-                    className="px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded text-gray-600"
-                  >
-                    Clear
-                  </button>
-                </div>
               </div>
 
-              <div className="mt-6 border-t pt-4 flex justify-end gap-2">
-                <button
-                  onClick={() => setShowEnrollDrawer(false)}
-                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-gray-800"
-                >
+              <div className="flex gap-2 mb-6">
+                <button onClick={() => { addAdHocLearner(); setSuggestionsOpen(false); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-medium">
+                  Add Typed
+                </button>
+                <button onClick={() => { setSelectedLearners([]); setEnrollInput(""); setSuggestionsOpen(false); }} className="px-4 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600">
+                  Clear
+                </button>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4 flex justify-end gap-3">
+                <button onClick={() => setShowEnrollDrawer(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 font-medium">
                   Cancel
                 </button>
-                <button
-                  onClick={submitEnrollment}
-                  className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded"
-                >
+                <button onClick={submitEnrollment} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg shadow-md">
                   Enroll Selected
                 </button>
               </div>
             </div>
           </div>
 
-          {/* hidden file inputs */}
           <input ref={thumbInputRef} type="file" accept="image/*" className="hidden" />
           <input ref={videoInputRef} type="file" accept="video/*" className="hidden" />
         </div>
       </div>
     );
   }
+
 
   // PREVIEW VIEW
   if (view === "preview" && editingCourse) {
@@ -1351,9 +988,7 @@ export default function AdminCourseCreator() {
   return (
     <div className="min-h-screen text-slate-100">
       {notification && (
-        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${notification.type === "success" ? "bg-emerald-500" : "bg-red-500"} text-white font-semibold`}>
-          {notification.message}
-        </div>
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${notification.type === "success" ? "bg-emerald-500" : "bg-red-500"} text-white font-semibold`}> {notification.message } </div>
       )}
 
       <div className="sticky top-0 bg-white backdrop-blur-sm border-b border-black z-40">
@@ -1378,7 +1013,7 @@ export default function AdminCourseCreator() {
                   if (!editingCourse) return;
                   const updated = { ...editingCourse, published: !editingCourse.published };
                   syncEditingToCourses(updated);
-                  notify(updated.published ? "Course published" : "Course unpublished");
+                  notify(updated.published ? "Course published (local)" : "Course unpublished (local)");
                 }} className={`px-3 py-1 rounded ${editingCourse.published ? "bg-emerald-500 text-black" : "bg-yellow-400 text-black"}`}>
                   {editingCourse.published ? "Unpublish" : "Publish"}
                 </button>
@@ -1398,7 +1033,6 @@ export default function AdminCourseCreator() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {editingCourse && (
           <div className="space-y-6">
-            {/* Course Details */}
             <div className="bg-white backdrop-blur-sm rounded-xl p-6 border border-slate-700">
               <h2 className="text-2xl font-bold mb-6  text-black flex items-center gap-2">
                 <Settings size={24} /> Course Details
@@ -1407,8 +1041,7 @@ export default function AdminCourseCreator() {
                 <div>
                   <label className="block text-sm font-semibold text-black mb-2">Course Title</label>
                   <input type="text"
-                    value={editingCourse.title} onChange={(e) => syncEditingToCourses({ ...editingCourse, title: e.target.value })}
-                    className="w-full px-4 py-2 bg-white rounded-lg border border-black focus:border-black focus:outline-none text-black"
+                    value={editingCourse.title} onChange={(e) => syncEditingToCourses({ ...editingCourse, title: e.target.value })} className="w-full px-4 py-2 bg-white rounded-lg border border-black focus:border-black focus:outline-none text-black"
                     placeholder={editingCourse.title ? "Course Title" : "Title"}
                   />
                 </div>
@@ -1433,7 +1066,7 @@ export default function AdminCourseCreator() {
                 <div className="md:col-span-2">
                   <label className="block text-sm text-black  font-semibold mb-2">Description</label>
                   <textarea value={editingCourse.description ?? ""} onChange={(e) => syncEditingToCourses({ ...editingCourse, description: e.target.value })} rows={3} className="w-full px-4 py-2 bg-white rounded-lg border border-black focus:border-black focus:outline-none text-black"
-                    placeholder={editingCourse.title ? "Course Description":"Description"}
+                    placeholder={editingCourse.title ? "Course Description" : "Description"}
                   />
                 </div>
 
@@ -1446,7 +1079,7 @@ export default function AdminCourseCreator() {
               </div>
             </div>
 
-            {/* Chapters & Lessons */}
+            {/* Chapters & Lessons (same structure as original) */}
             <div className="bg-white backdrop-blur-sm rounded-xl p-6 border border-black">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl text-black font-bold flex items-center gap-2">
@@ -1462,7 +1095,7 @@ export default function AdminCourseCreator() {
                   <div key={chapter.id} className="bg-white rounded-lg border border-black">
                     <div className="p-4 flex items-center justify-between border-b border-black">
                       <div className="flex items-center gap-3 flex-1">
-                        <button onClick={() => toggleChapter(chapter.id)} className="text-black hover:text-black">
+                        <button onClick={() => toggleChapter(chapter.id)} className="text-black hover:text-slate-200">
                           {expandedChapters[chapter.id] ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </button>
                         <input type="text" value={chapter.title} onChange={(e) => updateChapter(chapter.id, { title: e.target.value })} className="flex-1 px-3 py-2 text-black bg-white rounded border border-white focus:border-black focus:outline-none font-semibold" />
@@ -1490,6 +1123,8 @@ export default function AdminCourseCreator() {
 
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <div>
+                                <label className="block text-xs text-black mb-3">Video</label>
+
                                 <div className="flex items-center gap-3">
                                   <div className="w-48 h-28 bg-white rounded overflow-hidden flex items-center justify-center">
                                     {lesson.videoUrl ? (
@@ -1513,9 +1148,7 @@ export default function AdminCourseCreator() {
 
                             <div className="mb-3">
                               <label className="block text-xs text-black mb-1">Lesson Content</label>
-                              <textarea value={lesson.content ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { content: e.target.value })} rows={3} className="w-full px-3 py-2 text-black bg-white rounded border border-black focus:border-black focus:outline-none text-sm font-mono" 
-                                placeholder={lesson.content ? "Lesson Description" : "Description"}
-                              />
+                              <textarea value={lesson.content ?? ""} onChange={(e) => updateLesson(chapter.id, lesson.id, { content: e.target.value })} rows={3} className="w-full px-3 py-2 bg-white rounded border border-black focus:border-black-500 focus:outline-none text-sm font-mono text-black" />
                             </div>
 
                             <div className="border-t border-black pt-3">
@@ -1525,7 +1158,6 @@ export default function AdminCourseCreator() {
                                     <span className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
                                       <HelpCircle size={16} /> Quiz Attached
                                     </span>
-                                    
                                     <button onClick={() => updateLesson(chapter.id, lesson.id, { quiz: null })} className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 rounded">
                                       Remove Quiz
                                     </button>
@@ -1567,6 +1199,10 @@ export default function AdminCourseCreator() {
                 </div>
                 </div>
         )}
+
+        {/* hidden file inputs */}
+        <input ref={thumbInputRef} type="file" accept="image/*" className="hidden" />
+        <input ref={videoInputRef} type="file" accept="video/*" className="hidden" />
       </div>
     </div>
   );

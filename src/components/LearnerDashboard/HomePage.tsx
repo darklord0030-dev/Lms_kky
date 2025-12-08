@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { Course } from "../lib/supabase"; // keeping the type only
-import CourseCard from "./CourseCard";
+import CourseCard from "./StudentCourseViewer";
 
 export default function HomePage() {
   const [courses, setCourses] = useState<Course[]>([]);

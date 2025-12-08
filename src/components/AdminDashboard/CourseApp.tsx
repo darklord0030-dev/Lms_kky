@@ -3,7 +3,7 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import BasicInfoForm from "./BasicInfoForm";
 import CourseStructure from './CourseStructure';
 
-import LessonConfiguration from './LessonConfiguration';
+import LessonConfiguration from './AdminCourse';
 
 // ---------------------------
 // REMOVED supabase import

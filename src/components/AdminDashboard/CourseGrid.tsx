@@ -57,7 +57,7 @@ export const CourseGrid: React.FC = () => {
                 onClick={() => navigate('/admin')}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-l-lg font-medium transition-colors"
               >
-                Add course
+                Create New course
               </button>
               <button className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-r-lg border-l border-blue-500 transition-colors">
                 <ChevronDown className="w-4 h-4" />
@@ -115,11 +115,11 @@ export const CourseGrid: React.FC = () => {
           Time to craft a new course.
         </p>
         <button
-          onClick={() => navigate('/admin')}
+          onClick={() => navigate('/admincourse')}
           className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center gap-2"
         >
           <Plus className="w-5 h-5" />
-          Add course
+          Create New Course
         </button>
       </div>
     )}

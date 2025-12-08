@@ -765,7 +765,7 @@ function WorkflowBuilder() {
   return (
     <div className="flex h-full">
       {/* Left pane: Toolbox and controls */}
-      <div className="w-80 bg-white border-r overflow-auto">
+      <div className="w-64 bg-white border-r overflow-auto">
         <div className="p-4">
           <h2 className="text-lg font-bold">Workflow Builder</h2>
           <p className="text-xs text-gray-500">Redux + no-code visual editor (TypeScript)</p>
@@ -905,7 +905,7 @@ function WorkflowBuilder() {
         })}
 
         {/* Logs Panel */}
-        <div className="absolute right-4 top-4 w-96 bg-white border rounded shadow flex flex-col max-h-[75vh]">
+        <div className="absolute right-4 top-4 w-46 bg-white border rounded shadow flex flex-col max-h-[75vh]">
           <div className="px-4 py-2 border-b flex justify-between items-center">
             <span className="text-sm font-semibold">Execution Logs</span>
             <span className="text-xs text-gray-500">{running ? "Running..." : "Idle"}</span>
